@@ -310,7 +310,7 @@ function frameLooper() {
         bar_x = center_x;
         bar_y = center_y;
 
-        bar_height = Math.min(99999, Math.max((fbc_array[i] * 2.5 - 300), 0));
+        bar_height = Math.min(99999, Math.max((fbc_array[i] * 2.5 - 250), 0));
         bar_width = bar_height * 0.03;
 
         bar_x_term = center_x + Math.cos(rads * i + rot) * (radius + bar_height);

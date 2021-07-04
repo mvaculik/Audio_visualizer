@@ -75,6 +75,7 @@ a {
 }
 #image {
   position: absolute;
+  width: 100px;
   top: 0%;
   left: 0%;
 }
