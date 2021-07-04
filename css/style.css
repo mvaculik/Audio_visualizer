@@ -1,0 +1,585 @@
+/*
+* COLORES: 
+* purple -> rgb(108 5 255 / 36%)
+*/
+
+body {
+  margin: 0;
+  padding: 0;
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  font-family: "Lato", sans-serif;
+  cursor: url('cursor.png'), auto;
+}
+a {
+  cursor: url('cursor.png'), auto;
+}
+.button {
+  background-color: transparent;
+  color: #fff;
+  padding: 5px 10px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: url('cursor.png'), auto;
+  border: 2px solid #fff;
+}
+/*
+.all-back {
+  padding: 7%;
+  top: 0;
+  width: 93%;
+  height: 84%;
+  position: absolute;
+  background: aliceblue;
+}
+*/
+.button:hover {
+  background-color: #fff;
+  color: black;
+}
+.textbox {
+  background: white;
+  border: 1px solid #6600ff;
+  border-radius: 5px;
+  box-shadow: 0 0 5px 3px #6600ff;
+  color: #666;
+  outline: none;
+  height: 23px;
+  width: 275px;
+}
+/*
+#visualizer_render {
+  position: absolute;
+  left: 0;
+  padding: 1%;
+  top: 0;
+  width: 89.5%;
+}
+*/
+#title {
+  color: white;
+  position: absolute;
+  bottom: -10px;
+  left: 10px;
+  cursor: url('cursor_about.png'), auto;
+}
+#instruction {
+  color: white;
+  position: absolute;
+  bottom: 55px;
+  left: 10px;
+}
+#image {
+  position: absolute;
+  top: 0%;
+  left: 0%;
+}
+#soundcloud {
+  position: absolute;
+  bottom: 40px;
+  left: 320px;
+  z-index: 2;
+}
+#artisttitle {
+  color: white;
+  position: absolute;
+  top: 40px;
+  left: 170px;
+  font-size: 50%;
+}
+#songtitle {
+  color: white;
+  position: absolute;
+  top: 0px;
+  left: 170px;
+  font-size: 70%;
+}
+#preloader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #000;
+  /* change if the mask should have another color then white */
+  z-index: 99;
+  /* makes sure it stays on top */
+}
+#URLbox {
+  z-index: 2;
+  position: absolute;
+  bottom: 45px;
+  left: 10px;
+  width: 300px;
+}
+#button_play {
+  z-index: 2;
+  position: relative;
+  bottom: 47px;
+  left: 33.3%;
+}
+#button_pause {
+  z-index: 2;
+  position: relative;
+  bottom: 86px;
+  left: 33.3%;
+}
+#homelink {
+  position: absolute;
+  bottom: 40px;
+  right: 20px;
+  color: #ffffff;
+  opacity: 0.5;
+}
+#credit {
+  position: absolute;
+  bottom: 0px;
+  right: 20px;
+  z-index: 3;
+  color: #ffffff;
+  opacity: 0.5;
+}
+#scrubber {
+  z-index: 2;
+  position: relative;
+  bottom: 110px;
+  left: 33.3vw;
+}
+input[type=range] {
+  -webkit-appearance: none;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 300px;
+  height: 10px;
+  background: #000;
+  border: none;
+  border-radius: 3px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  border: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #6600ff;
+  margin-top: -4px;
+}
+input[type=range]:focus {
+  outline: none;
+}
+input[type=range]:focus::-webkit-slider-runnable-track {
+  background: #ccc;
+}
+#audioCurrentTime {
+  color: white;
+  position: relative;
+  bottom: 147px;
+  left: 66.6%;
+  font-size: 70%;
+}
+.link {
+  color: #ffffff;
+}
+#hideBody,
+#socialIcon,
+#image,
+#songtitle,
+#artisttitle {
+  display: none;
+}
+#qr-fb,
+#qr-steam {
+  position: fixed;
+  bottom: 10px;
+}
+#qr-fb a,
+#qr-steam a {
+  display: inline-block;
+  width: 100px;
+  height: 100px;
+}
+#qr-fb a img,
+#qr-steam a img {
+  width: 100px;
+  height: 100px;
+  -ms-interpolation-mode: nearest-neighbor;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -o-crisp-edges;
+  image-rendering: pixelated;
+}
+#qr-fb {
+  right: 10px;
+}
+#qr-fb a {
+  cursor: url('cursor_fb.png'), auto;
+}
+#qr-steam {
+  left: 10px;
+}
+#qr-steam a {
+  cursor: url('cursor_steam.png'), auto;
+}
+#controls {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  cursor: url('cursor.png'), auto;
+}
+#controls i {
+  /*color: #000;*/
+  color: #fff;
+  vertical-align: middle;
+  margin-right: 5px;
+  cursor: url('cursor.png'), auto;
+}
+#controls .name {
+  width: 150px;
+  vertical-align: middle;
+  font-family: Lucida Console;
+  display: inline-block;
+  /*color: #000;*/
+  color: #fff;
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+#controls .name span {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee 15s linear infinite;
+}
+#controls .name:hover {
+  opacity: 1;
+}
+
+
+#title {
+  position: absolute;
+  width: 500px;
+  margin: 0 auto;
+  text-align: center;
+  top: 50px;
+  height: 125px;
+  left: 0;
+  right: 0;
+  font-size: 125px;
+  font-family: 'Libre Barcode 39 Extended Text', sans-serif;
+  color: #fff;
+  cursor: url('cursor_about.png'), auto;
+}
+#subtopewds {
+  position: absolute;
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  top: 225px;
+  height: 60px;
+  left: 0;
+  right: 0;
+  font-size: 50px;
+  font-weight: bold;
+  color: #fff;
+}
+#subtopewds a {
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+}
+#subtopewds a:hover {
+  font-size: 55px;
+}
+#androidWarn {
+  display: none;
+  z-index: 10;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  font-size: 25px;
+  background: black;
+  text-align: center;
+  font-family: 'Share Tech Mono', monospace;
+  color: #fff;
+  border: 4px solid #fff;
+  padding: 10% 10px;
+}
+#androidWarn div {
+  padding: 10px;
+  font-size: 30px;
+  font-weight: bold;
+  display: inline-block;
+  margin: 0 auto;
+  margin-top: 50px;
+  border: 4px solid #fff;
+}
+/* Make it move */
+@keyframes marquee {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(-100%, 0);
+  }
+}
+#volume {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  cursor: url('cursor.png'), auto;
+}
+#volume i {
+  /*color: #000;*/
+  color: #fff;
+  vertical-align: middle;
+}
+#volume input[type=range] {
+  display: none;
+  vertical-align: middle;
+  -webkit-appearance: none;
+  margin: 7.5px 0;
+  width: 100px;
+}
+#volume input[type=range]:focus {
+  outline: none;
+}
+#volume input[type=range]::-webkit-slider-runnable-track {
+  width: 100px;
+  height: 2px;
+  cursor: url('cursor.png'), auto;
+  animate: 0.2s;
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]::-webkit-slider-thumb {
+  height: 15px;
+  width: 5px;
+  border-radius: 0px;
+  cursor: url('cursor.png'), auto;
+  -webkit-appearance: none;
+  margin-top: -6.5px;
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]:focus::-webkit-slider-runnable-track {
+  background: #fff;
+}
+#volume input[type=range]::-moz-range-track {
+  width: 100px;
+  height: 2px;
+  cursor: url('cursor.png'), auto;
+  animate: 0.2s;
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]::-moz-range-thumb {
+  height: 15px;
+  width: 5px;
+  border-radius: 0px;
+  cursor: url('cursor.png'), auto;
+  background: #fff;
+  /*background: #000;*/
+}
+#volume input[type=range]::-ms-track {
+  width: 100px;
+  height: 2px;
+  cursor: url('cursor.png'), auto;
+  animate: 0.2s;
+  border-width: 5px 0;
+  /*
+  color: transparent;
+  background: transparent;
+  border-color: transparent;
+  */
+  color: #fff;
+  background: #fff;
+  border-color: #fff;
+
+  
+}
+#volume input[type=range]::-ms-fill-lower {
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]::-ms-fill-upper {
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]::-ms-thumb {
+  height: 15px;
+  width: 5px;
+  border-radius: 0px;
+  cursor: url('cursor.png'), auto;
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]:focus::-ms-fill-lower {
+  /*background: #000;*/
+  background: #fff;
+}
+#volume input[type=range]:focus::-ms-fill-upper {
+  /*background: #000;*/
+  background: #fff;
+}
+
+/* The Modal (background) */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Modal Content/Box */
+.modal-content {
+  pointer-events: auto;
+  position: absolute;
+  background-color: #000;
+  left: 0;
+  right: 0%;
+  bottom: 0;
+  border: 4px solid #fff;
+  overflow: hidden;
+}
+.modal-content .scrollable {
+  overflow-y: scroll;
+  padding: 20px;
+  margin-right: -20px;
+  height: 100%;
+}
+.modal-content p {
+  line-height: 20px;
+  color: #fff;
+  font-family: 'Share Tech Mono', monospace;
+}
+.modal-content p span.link {
+  color: #fff;
+  text-decoration: underline;
+}
+.modal-content .leftcol {
+  float: left;
+}
+.modal-content .rightcol {
+  float: right;
+  text-align: right;
+}
+.modal-content .table {
+  font-family: 'Share Tech Mono', monospace;
+}
+.modal-content .table .row {
+  padding: 2px 0;
+  height: 20px;
+}
+.modal-content .table .row .col {
+  padding: 0 2px;
+  display: inline-block;
+  height: 20px;
+  line-height: 20px;
+  color: #fff;
+  vertical-align: middle;
+}
+.modal-content .table .row .col div {
+  float: right;
+  height: 20px;
+  margin-left: 5px;
+  display: inline-block;
+  border-right: 3px solid #fff;
+  border-left: 3px solid #fff;
+  line-height: 20px;
+}
+.modal-content .table .row .col div span {
+  display: block;
+  height: 2px;
+  margin: 9px 0;
+  background: #fff;
+}
+.modal-content .table .row .col:nth-child(2) {
+  width: 100px;
+}
+@media only screen and (max-width: 1600px) {
+  .modal-content {
+    left: 15%;
+    right: 15%;
+  }
+}
+@media only screen and (max-width: 1400px) {
+  .modal-content {
+    left: 10%;
+    right: 10%;
+  }
+}
+@media only screen and (max-width: 1200px) {
+  .modal-content {
+    left: 10px;
+    right: 10px;
+  }
+}
+/* The Close Button */
+.modal-close {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+.modal-close i {
+  color: #fff;
+  font-size: 15px;
+}
+.close:hover,
+.close:focus {
+  color: black;
+  text-decoration: none;
+  cursor: pointer;
+}
+#steam-bot {
+  position: fixed;
+  bottom: 110px;
+}
+#steam-bot a {
+  display: inline-block;
+  width: 100px;
+  height: 100px;
+}
+#steam-bot a img {
+  width: 80px;
+  height: 80px;
+  -ms-interpolation-mode: nearest-neighbor;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -o-crisp-edges;
+  image-rendering: pixelated;
+}
+#steam-bot {
+  left: 20px;
+}
+#steam-bot a {
+  cursor: url('cursor_steam_bot.png'), auto;
+}
+#pushme {
+  color: #000;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 2px solid rgb(0, 0, 0);
+  border-radius: 7px;
+  padding: 7px 10px;
+  transform: translate(-50%, -50%);
+}
+#pushme:hover {
+  background: #000;
+  color: #fff;
+}
+#pushme h1 {
+  margin: 0;
+}
