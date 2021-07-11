@@ -13,7 +13,7 @@ rot = 0;
 intensity = 0;
 pause = 1;
 isSeeking = 0;
-var volume = 0.2;
+var volume = 0.4;
 var mp3s = [
     {file: 'allTheTime', name: 'Zara Larsson - All the Time (Don Diablo Remix - Official Audio)'},
     {file: 'supersmash', name: 'SUPER SMASH BROS BRAWL DRILL REMIX BY SHAE OT'}, // 1
@@ -34,13 +34,29 @@ var mp3s = [
     {file: 'virus', name: 'Martin Garrix & MOTi - Virus'}, // 17
 ];
 
+/*
+function getDevice() {
+
+    var dev = document.getElementById("dev");
+
+    if (window.outerWidth > 550)
+    {
+        return "Mobile";
+    }
+    if (window.outerWidth < 1199 && window.outerWidth < 551)
+    {
+        return "Tablet";
+    }
+    if (window.outerWidth > 1200)
+    {
+        return "PC";
+    }
+
+}
+*/
+
 function getMobileOperatingSystem() {
     var userAgent = navigator.userAgent || navigator.vendor || window.opera;
-
-    if (window.outerWidth < 550)
-    {
-        console.log("width is: " + window.outerWidth);
-    }
 
     // Windows Phone must come first because its UA also contains "Android"
     if (/windows phone/i.test(userAgent)) {
@@ -138,10 +154,25 @@ $(window).on('load', function () {
 });
 
 $(document).ready(function () {
-    $("#volume input").val(volume * 100);
+    $("#volume input").val(volume * 100);  
     $(".fa-volume-up").click(function () {
-        $("#volume input").fadeToggle();
+
+        if (audio.volume === 0) {
+            document.getElementById('volume').style.opacity = 1;
+            audio.volume = 0.5;
+        }
+        else {
+            document.getElementById('volume').style.opacity = 0.5;
+            audio.volume = 0;
+        }
     });
+
+    for (let e of document.querySelectorAll('input[type="range"].slider-progress')) {
+        e.style.setProperty('--value', e.value);
+        e.style.setProperty('--min', e.min == '' ? '0' : e.min);
+        e.style.setProperty('--max', e.max == '' ? '100' : e.max);
+        e.addEventListener('input', () => e.style.setProperty('--value', e.value));
+      }
 
     $("#androidWarn .fuckit").click(function () {
         $("#androidWarn").fadeOut();
@@ -155,28 +186,15 @@ $(document).ready(function () {
         img.src = songIndex(songindex);
         initMp3Player();
     });
- 
-
-    /* restart song < or next song > */
-    $(document).ready(function(){
-        $(document).bind("keydown", function(e){ 
-            e = e || window.event;
-            var charCode = e.which || e.keyCode;
-            if(charCode == 39)
-            if (mp3s.length - 1 == songindex) songindex = 0;
-                else songindex = songindex + 1;
-                img.src = songIndex(songindex);
-                initMp3Player();    
-        });
-    });
-
- 
-
     
 
     $('#volume input[type=range]').on('input', function () {
-        audio.volume = $(this).val() / 100;
-        volume = $(this).val() / 100;
+        if (document.getElementById('volume').style.opacity < 1) {
+            document.getElementById('volume').style.opacity = 1;
+        }
+            audio.volume = $(this).val() / 100;
+            volume = $(this).val() / 100;
+        
     });
 
 
@@ -280,8 +298,8 @@ function frameLooper() {
     resize_canvas();
 
     var grd = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grd.addColorStop(0, "rgba(0, 0, 0, 1)");
-    grd.addColorStop(1, "rgba(0, 0, 0, 1)");
+    grd.addColorStop(0, "rgba(0, 0, 0, 0)"); //background
+    grd.addColorStop(1, "rgba(0, 0, 0, 0)"); //background
 
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
