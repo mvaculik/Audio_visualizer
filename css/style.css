@@ -6,6 +6,7 @@
 body {
   margin: 0;
   padding: 0;
+  background-color: #17191d;
   overflow: hidden;
   font-family: "Lato", sans-serif;
   cursor: url('cursor.png'), auto;
@@ -215,14 +216,14 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   overflow: hidden;
   box-sizing: border-box;
   font-size: 16px;
-  color: rgb(0 0 0);
+  cursor: url('cursor.png'), auto;
   transform: rotate(270deg);
   color: #863dab;
 }
 #controls .name span {
   display: inline-block;
   padding-left: 100%;
-  animation: marquee 115s linear infinite;
+  animation: marquee 55s linear infinite;
 }
 
 
@@ -253,7 +254,7 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   font-size: 140%;
   vertical-align: middle;
   color: #863dab;
-  background: rgb(158 0 255 / 10%);
+  background: rgb(158 0 255 / 9%);
   box-shadow: #9e00ff59 0px 0px 20px;
   cursor: pointer;
 }
