@@ -32,6 +32,11 @@ var mp3s = [
     {file: 'hardbass', name: 'Hard Bass School - narkotik kal'}, // 14
     {file: 'higher', name: 'Ummet Ozcan x Lucas  Steve - Higher'}, //
     {file: 'virus', name: 'Martin Garrix & MOTi - Virus'}, // 17
+    {file: 'Prismo', name: 'TEXT'},  // 18
+    {file: 'Hellberg', name: 'TEXT'},  // 18
+    {file: 'Halsey', name: 'TEXT'},  // 18
+    {file: 'INZO', name: 'TEXT'},  // 18
+
 ];
 
 /*

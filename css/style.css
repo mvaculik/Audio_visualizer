@@ -23,22 +23,25 @@ body {
 .column-1 {
   float: left;
   width: 95%;
-  height: -webkit-fill-available;
+  /*height: -webkit-fill-available;*/
   height: 1000px;
-  background-color: #000;
+  background-color: #17191d;
   overflow: hidden;
 }
 /* Control Panel - column */
 .column-2 {
   float: left;
   width: 5%;
-  background-color: #fff;
+  background-color: #17191d;
   /* padding: 10px; */
-  height: -webkit-fill-available;
+  /* height: -webkit-fill-available; */
   height: 1000px;
   text-align: center;
+  /* box-shadow: rgb(50 50 93 / 25%) 0px 50px 100px -20px, rgb(0 0 0 / 30%) 0px 30px 60px -30px, rgb(10 37 64 / 35%) 0px -2px 6px 0px inset; */
   cursor: pointer;
   overflow: hidden;
+  /* box-shadow: rgb(255 255 255 / 26%) 0px 3px 6px, rgb(255 255 255 / 34%) 1px 3px 8px; */
+  box-shadow: rgb(0 0 0 / 50%) 0px 8px 24px;
 }
 
 /* Clear floats after the columns */
@@ -149,7 +152,6 @@ input[type=range] {
 input[type=range]::-webkit-slider-runnable-track {
   width: 300px;
   height: 10px;
-  background: #000;
   border: none;
   border-radius: 3px;
 }
@@ -181,17 +183,24 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   text-align: center;
 }
 #controls i {
-  color: #000;
+  /*color: #fff;*/
   font-size: 130%;
   vertical-align: middle;
   position: relative;
   margin-top: 30px;
+  cursor: pointer;
+  color: #863dab;
+  background: rgb(158 0 255 / 10%);
+  box-shadow: #9e00ff59 0px 0px 20px;
+}
+#controls i:hover {
+  color: #daacf1;
 }
 #controls .name {
-  width: 360%;
+  width: 324%;
   right: 130%;
   position: relative;
-  right: 132%;
+  right: 114%;
   vertical-align: middle;
   font-family: Lucida Console;
   font-family: Verdana, Geneva, Tahoma, sans-serif;
@@ -200,7 +209,7 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   white-space: nowrap;
   position: relative;
   /* top: 72px; */
-  margin-top: 125px;
+  margin-top: 134px;
   /* top: 29px; */
   /* height: 100px; */
   overflow: hidden;
@@ -208,6 +217,7 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   font-size: 16px;
   color: rgb(0 0 0);
   transform: rotate(270deg);
+  color: #863dab;
 }
 #controls .name span {
   display: inline-block;
@@ -237,17 +247,29 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   display: inline-block;
 }
 #volume i {
+  /*font-size: 140%;
+  color: #fff;
+  vertical-align: middle;*/
   font-size: 140%;
-  color: #000;
   vertical-align: middle;
+  color: #863dab;
+  background: rgb(158 0 255 / 10%);
+  box-shadow: #9e00ff59 0px 0px 20px;
+  cursor: pointer;
 }
-/* Slider line - vertical */
+#volume i:hover {
+  color: #daacf1;
+}
 
 /*generated with Input range slider CSS style generator (version 20201223)
 https://toughengineer.github.io/demo/slider-styler*/
+
+/* Slider Line - Vertical */
 input[type=range].styled-slider {
   position: relative;
     width: 400%;
+    background: rgb(158 0 255 / 10%);
+    box-shadow: #9e00ff59 0px 0px 20px;
     height: 100%;
     /* top: 200px; */
     margin-top: 233%;
@@ -256,7 +278,7 @@ input[type=range].styled-slider {
   transform: rotate(270deg);
 }
 
-/*progress support*/
+/* Progress Support */
 input[type=range].styled-slider.slider-progress {
   --range: calc(var(--max) - var(--min));
   --ratio: calc((var(--value) - var(--min)) / var(--range));
@@ -267,7 +289,8 @@ input[type=range].styled-slider:focus {
   outline: none;
 }
 
-/*webkit*/
+/* Webkit */
+/* Slider Line - Horizontal */
 input[type=range].styled-slider::-webkit-slider-thumb {
   width: 0;
   height: 0;
@@ -282,8 +305,8 @@ input[type=range].styled-slider::-webkit-slider-thumb {
 input[type=range].styled-slider::-webkit-slider-runnable-track {
   height: 1em;
   border-radius: 0.5em;
-  background: #efefef;
-  border: 1px solid #b2b2b2;
+  background: #cd88f0;
+  border: 1px solid #17191d;
   box-shadow: none;
 }
 input[type=range].styled-slider::-webkit-slider-thumb:hover {
@@ -292,7 +315,7 @@ input[type=range].styled-slider::-webkit-slider-thumb:hover {
 
 input[type=range].styled-slider:hover::-webkit-slider-runnable-track {
   background: #e5e5e5;
-  border-color: #9a9a9a;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider::-webkit-slider-thumb:active {
@@ -300,20 +323,20 @@ input[type=range].styled-slider::-webkit-slider-thumb:active {
 }
 
 input[type=range].styled-slider:active::-webkit-slider-runnable-track {
-  background: #f5f5f5;
-  border-color: #c1c1c1;
+  background: #cd88f0;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider.slider-progress::-webkit-slider-runnable-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #efefef;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #cd88f0;
 }
 
 input[type=range].styled-slider.slider-progress:hover::-webkit-slider-runnable-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #e5e5e5;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #daacf1;
 }
 
 input[type=range].styled-slider.slider-progress:active::-webkit-slider-runnable-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #f5f5f5;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #daacf1;
 }
 
 /*mozilla*/
@@ -329,8 +352,8 @@ input[type=range].styled-slider::-moz-range-thumb {
 input[type=range].styled-slider::-moz-range-track {
   height: max(calc(1em - 1px - 1px),0px);
   border-radius: 0.5em;
-  background: #efefef;
-  border: 1px solid #b2b2b2;
+  background: #cd88f0;
+  border: 1px solid #17191d;
   box-shadow: none;
 }
 
@@ -339,8 +362,8 @@ input[type=range].styled-slider::-moz-range-thumb:hover {
 }
 
 input[type=range].styled-slider:hover::-moz-range-track {
-  background: #e5e5e5;
-  border-color: #9a9a9a;
+  background: #cd88f0;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider::-moz-range-thumb:active {
@@ -348,20 +371,20 @@ input[type=range].styled-slider::-moz-range-thumb:active {
 }
 
 input[type=range].styled-slider:active::-moz-range-track {
-  background: #f5f5f5;
-  border-color: #c1c1c1;
+  background: #cd88f0;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider.slider-progress::-moz-range-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #efefef;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #cd88f0;
 }
 
 input[type=range].styled-slider.slider-progress:hover::-moz-range-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #e5e5e5;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #daacf1;
 }
 
 input[type=range].styled-slider.slider-progress:active::-moz-range-track {
-  background: linear-gradient(#000,#000) 0/var(--sx) 100% no-repeat, #f5f5f5;
+  background: linear-gradient(#863dab,#863dab) 0/var(--sx) 100% no-repeat, #daacf1;
 }
 
 /*ms*/
@@ -389,8 +412,8 @@ input[type=range].styled-slider::-ms-thumb {
 input[type=range].styled-slider::-ms-track {
   height: 1em;
   border-radius: 0.5em;
-  background: #efefef;
-  border: 1px solid #b2b2b2;
+  background: #cd88f0;
+  border: 1px solid #17191d;
   box-shadow: none;
   box-sizing: border-box;
 }
@@ -401,7 +424,7 @@ input[type=range].styled-slider::-ms-thumb:hover {
 
 input[type=range].styled-slider:hover::-ms-track {
   background: #e5e5e5;
-  border-color: #9a9a9a;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider::-ms-thumb:active {
@@ -410,7 +433,7 @@ input[type=range].styled-slider::-ms-thumb:active {
 
 input[type=range].styled-slider:active::-ms-track {
   background: #f5f5f5;
-  border-color: #c1c1c1;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider.slider-progress::-ms-fill-lower {
@@ -418,18 +441,18 @@ input[type=range].styled-slider.slider-progress::-ms-fill-lower {
   border-radius: 0.5em 0 0 0.5em;
   margin: -1px 0 -1px -1px;
   background: #000;
-  border: 1px solid #b2b2b2;
+  border: 1px solid #17191d;
   border-right-width: 0;
 }
 
 input[type=range].styled-slider.slider-progress:hover::-ms-fill-lower {
   background: #000;
-  border-color: #9a9a9a;
+  border-color: #17191d;
 }
 
 input[type=range].styled-slider.slider-progress:active::-ms-fill-lower {
   background: #000;
-  border-color: #c1c1c1;
+  border-color: #17191d;
 }
 
 
