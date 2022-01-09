@@ -192,6 +192,7 @@ input[type=range]:focus::-webkit-slider-runnable-track {
   position: relative;
   cursor: pointer;
   color: #863dab;
+  margin-top: -2px;
 }
 #controls i:hover {
   color: #daacf1;
