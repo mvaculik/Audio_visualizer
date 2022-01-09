@@ -31,12 +31,13 @@ body {
 }
 /* Control Panel - column */
 .column-2 {
-  float: left;
-  width: 5%;
+  position: absolute;
+  z-index: 100;
+  /* display: grid; */
+  right: 0;
+  width: 80px;
   background-color: #17191d;
-  /* padding: 10px; */
-  /* height: -webkit-fill-available; */
-  height: 1000px;
+  height: 100%;
   text-align: center;
   /* box-shadow: rgb(50 50 93 / 25%) 0px 50px 100px -20px, rgb(0 0 0 / 30%) 0px 30px 60px -30px, rgb(10 37 64 / 35%) 0px -2px 6px 0px inset; */
   cursor: pointer;
@@ -176,47 +177,29 @@ input[type=range]:focus::-webkit-slider-runnable-track {
 /* Control panel section */
 #controls {
   position: relative;
-  z-index: 10;
-  background-color: transparent;
+  background: #17191d;
   width: 100%;
-  top: 133px;
-  margin-top: 20px;
+  height: 100%;
   text-align: center;
 }
 #controls i {
-  /*color: #fff;*/
+  z-index: 1000;
+  background: #17191d;
+  width: 100%;
+  padding: 20px 0;
   font-size: 130%;
   vertical-align: middle;
   position: relative;
-  margin-top: 30px;
   cursor: pointer;
   color: #863dab;
-  background: rgb(158 0 255 / 10%);
-  box-shadow: #9e00ff59 0px 0px 20px;
 }
 #controls i:hover {
   color: #daacf1;
 }
 #controls .name {
-  width: 324%;
-  right: 130%;
-  position: relative;
-  right: 114%;
-  vertical-align: middle;
-  font-family: Lucida Console;
-  font-family: Verdana, Geneva, Tahoma, sans-serif;
-  /* display: inline-block; */
-  /* color: #000; */
+  width: 100%;
+  position: absolute;
   white-space: nowrap;
-  position: relative;
-  /* top: 72px; */
-  margin-top: 134px;
-  /* top: 29px; */
-  /* height: 100px; */
-  overflow: hidden;
-  box-sizing: border-box;
-  font-size: 16px;
-  cursor: url('cursor.png'), auto;
   transform: rotate(270deg);
   color: #863dab;
 }
@@ -240,22 +223,18 @@ input[type=range]:focus::-webkit-slider-runnable-track {
 /* Volume Section */
 #volume {
   position: relative;
-  margin-top: 30px;
   width: 100%;
-  z-index: 10;
-  cursor: url('cursor.png'), auto;
-  background-color: transparent;
-  display: inline-block;
+  height: 50%;
+  z-index: 100;
+  cursor: url(cursor.png), auto;
+  background: #17191d;
+
 }
 #volume i {
-  /*font-size: 140%;
-  color: #fff;
-  vertical-align: middle;*/
   font-size: 140%;
+  padding: 20px 0;
   vertical-align: middle;
   color: #863dab;
-  background: rgb(158 0 255 / 9%);
-  box-shadow: #9e00ff59 0px 0px 20px;
   cursor: pointer;
 }
 #volume i:hover {
@@ -268,14 +247,12 @@ https://toughengineer.github.io/demo/slider-styler*/
 /* Slider Line - Vertical */
 input[type=range].styled-slider {
   position: relative;
-    width: 400%;
-    background: rgb(158 0 255 / 10%);
-    box-shadow: #9e00ff59 0px 0px 20px;
-    height: 100%;
-    /* top: 200px; */
-    margin-top: 233%;
-    right: 153%;
-    -webkit-appearance: none;
+  width: 371%;
+  left: -139%;
+  top: -33px;
+  background: transparent;
+  height: 100%;
+  -webkit-appearance: none;
   transform: rotate(270deg);
 }
 

@@ -167,7 +167,7 @@ $(document).ready(function () {
             audio.volume = 0.5;
         }
         else {
-            document.getElementById('volume').style.opacity = 0.5;
+            document.getElementById('volume').style.opacity = 1;
             audio.volume = 0;
         }
     });
