@@ -36,6 +36,7 @@ var mp3s = [
     {file: 'Hellberg', name: 'TEXT'},  // 18
     {file: 'Halsey', name: 'TEXT'},  // 18
     {file: 'INZO', name: 'TEXT'},  // 18
+    {file: 'ED_MOTN', name: 'Elley Duhé - MIDDLE OF THE NIGHT (Starix Remix)'},  // 18
 
 ];
 
