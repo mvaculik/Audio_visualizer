@@ -15,7 +15,6 @@ pause = 1;
 isSeeking = 0;
 var volume = 0.4;
 var mp3s = [
-    {file: 'ED_MOTN', name: 'ED - motion)'},
     {file: 'allTheTime', name: 'Zara Larsson - All the Time (Don Diablo Remix - Official Audio)'},
     {file: 'supersmash', name: 'SUPER SMASH BROS BRAWL DRILL REMIX BY SHAE OT'}, // 1
     {file: 'Armin_LYH', name: 'Armin van Buuren - Lifting You Higher'},
