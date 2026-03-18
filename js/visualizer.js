@@ -8,6 +8,7 @@ import * as bars from './visualizers/bars.js';
 import * as waveform from './visualizers/waveform.js';
 import * as particles from './visualizers/particles.js';
 import * as spectrum from './visualizers/spectrum.js';
+import * as neuralWeb from './visualizers/neural-web.js';
 
 const MODES = [
   { name: 'Radial', module: radial, icon: '◎' },
@@ -15,6 +16,7 @@ const MODES = [
   { name: 'Waveform', module: waveform, icon: '∿' },
   { name: 'Particles', module: particles, icon: '✦' },
   { name: 'Spectrum', module: spectrum, icon: '▤' },
+  { name: 'Neural', module: neuralWeb, icon: '⬡' },
 ];
 
 const DUST_COUNT = 50;
