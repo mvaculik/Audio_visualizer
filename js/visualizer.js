@@ -202,7 +202,6 @@ export class Visualizer {
     }
 
     // ===== Falling energy streaks (behind visualizer) =====
-    const bgHue1 = this.bgHue % 360;
     for (const s of this.streaks) {
       s.y += s.speed * dt;
       s.x += s.drift * dt + Math.sin(now * 0.001 + s.x * 5) * 0.0002;
