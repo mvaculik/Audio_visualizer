@@ -45,7 +45,6 @@ export function init(canvas, ctx) {
       size: 1.5 + Math.random() * 2.5,
       speed: 0.3 + Math.random() * 0.6,
       hueOff: Math.random() * 120,
-      trail: [],
     });
   }
   shockwaves = [];
@@ -177,7 +176,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
 
   // ===== FIRE RING around center =====
-  const fireSegments = 60;
+  const fireSegments = 30;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < fireSegments; i++) {
@@ -243,23 +242,14 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     const alpha = map(value, 0, 255, 0.08, 0.95);
     const lightness = map(value, 0, 255, 0.3, 0.75);
 
-    // Outer glow
-    ctx.strokeStyle = hslString(barHue, 0.95, lightness, alpha * 0.15);
-    ctx.lineWidth = barWidth + 7;
+    // Glow + core (2 passes instead of 3)
+    ctx.strokeStyle = hslString(barHue, 0.9, lightness, alpha * 0.25);
+    ctx.lineWidth = barWidth + 5;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Mid glow
-    ctx.strokeStyle = hslString(barHue, 0.9, lightness, alpha * 0.4);
-    ctx.lineWidth = barWidth + 3;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-
-    // Core bar
     ctx.strokeStyle = hslString(barHue, 0.85, lightness + 0.15, alpha);
     ctx.lineWidth = barWidth;
     ctx.beginPath();
@@ -376,32 +366,10 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     const pSize = p.size + map(freqVal, 0, 255, 0, 4) + beatPower * 2;
     const pAlpha = map(freqVal, 0, 255, 0.15, 0.8);
 
-    p.trail.push({ x: px, y: py });
-    while (p.trail.length > 8) p.trail.shift();
-
-    // Trail
-    if (p.trail.length > 1) {
-      for (let t = 1; t < p.trail.length; t++) {
-        const ratio = t / p.trail.length;
-        ctx.strokeStyle = hslString(pHue, 0.8, 0.6, ratio * pAlpha * 0.2);
-        ctx.lineWidth = ratio * pSize * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
-        ctx.lineTo(p.trail[t].x, p.trail[t].y);
-        ctx.stroke();
-      }
-    }
-
-    // Glow
-    ctx.fillStyle = hslString(pHue, 0.9, 0.6, pAlpha * 0.1);
+    // Single glow+core (1 draw instead of trail+glow+core = saves ~400 draws/frame)
+    ctx.fillStyle = hslString(pHue, 0.7, 0.8, pAlpha);
     ctx.beginPath();
-    ctx.arc(px, py, pSize + 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core
-    ctx.fillStyle = hslString(pHue, 0.4, 0.9, pAlpha);
-    ctx.beginPath();
-    ctx.arc(px, py, pSize, 0, Math.PI * 2);
+    ctx.arc(px, py, pSize + 2, 0, Math.PI * 2);
     ctx.fill();
   }
 

@@ -456,11 +456,7 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
     ctx.strokeRect(pad - 5, pad - 5, w - pad * 2 + 10, h - pad * 2 + 10);
   }
 
-  // ===== SCAN LINES =====
-  ctx.fillStyle = 'rgba(0,0,0,0.015)';
-  for (let sy = 0; sy < h; sy += 3) {
-    ctx.fillRect(0, sy, w, 1);
-  }
+  // Scan lines removed — too expensive (hundreds of fillRect per frame)
 
   // ===== CORNER BRACKETS =====
   const bracketSize = 25;

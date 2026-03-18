@@ -398,23 +398,26 @@ class App {
   }
 
   _updateProgress() {
+    // Throttle: update only every 500ms (YouTube IFrame API calls are slow)
+    const now = performance.now();
+    if (this._lastProgressUpdate && now - this._lastProgressUpdate < 500) return;
+    this._lastProgressUpdate = now;
+
     let current = 0, duration = 0;
     if (this.activeSource === 'youtube' && this.ytReady) {
-      current = this.ytPlayer.getCurrentTime();
-      duration = this.ytPlayer.getDuration();
+      try {
+        current = this.ytPlayer.getCurrentTime();
+        duration = this.ytPlayer.getDuration();
+      } catch (e) { return; }
     } else {
       current = this.audioEngine.getCurrentTime();
       duration = this.audioEngine.getDuration();
     }
 
     if (duration > 0) {
-      const pct = (current / duration) * 100;
-      this.els.progressFill.style.width = pct + '%';
-    } else {
-      this.els.progressFill.style.width = '0%';
+      this.els.progressFill.style.width = ((current / duration) * 100) + '%';
     }
 
-    // Time display
     this.els.timeCurrent.textContent = this._formatTime(current);
   }
 
@@ -491,20 +494,18 @@ class App {
     }
   }
 
-  // ===== Render Loop =====
+  // ===== Render Loop — optimized =====
   _renderLoop() {
     let freqData, timeData;
 
     if (this.activeSource === 'youtube') {
       // Prefer mic capture (real audio) over simulation
-      const micFreq = this.audioEngine.getMicFrequencyData();
-      const micTime = this.audioEngine.getMicTimeDomainData();
-
-      if (micFreq && micTime) {
-        freqData = micFreq;
-        timeData = micTime;
-      } else {
-        // Fallback to simulation
+      if (this.audioEngine.isMicActive) {
+        freqData = this.audioEngine.getMicFrequencyData();
+        timeData = this.audioEngine.getMicTimeDomainData();
+      }
+      // Fallback to simulation only if mic not active
+      if (!freqData) {
         this.simulation.update(1 / 60);
         freqData = this.simulation.getFrequencyData();
         timeData = this.simulation.getTimeDomainData();
