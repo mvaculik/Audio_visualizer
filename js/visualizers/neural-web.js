@@ -64,7 +64,7 @@ function createNodes(cx, cy, radius) {
   }
 }
 
-export function draw(ctx, w, h, freqData, timeData, dt) {
+export function render(freqData, timeData, dt, w, h, ctx) {
   time += dt;
   const cx = w / 2;
   const cy = h / 2;
