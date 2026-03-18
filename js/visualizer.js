@@ -1,6 +1,8 @@
 // js/visualizer.js — Canvas orchestrator, mode switching, background effects
 
 import { lerp, map, hslString, perlinOctaves, clamp } from './utils.js';
+import { MusicIntelligence } from './music-intelligence.js';
+import { renderHud } from './hud.js';
 import * as radial from './visualizers/radial.js';
 import * as bars from './visualizers/bars.js';
 import * as waveform from './visualizers/waveform.js';
@@ -35,6 +37,10 @@ export class Visualizer {
     this._bassIdx = 0;
     this._bgFlash = 0;
     this._bgPulse = 0;
+
+    // Music intelligence + HUD
+    this.mi = new MusicIntelligence();
+    this.hudVisible = false;
 
     this._initDust();
     this._initFalling();
@@ -262,7 +268,18 @@ export class Visualizer {
       ctx.restore();
     }
 
+    // ===== Update music intelligence =====
+    this.mi.update(freqData, timeData, dt);
+
     // ===== Render active visualizer =====
     MODES[this.currentMode].module.render(freqData, timeData, dt, w, h, ctx);
+
+    // ===== HUD overlay (on top of everything) =====
+    renderHud(ctx, w, h, this.mi, dt, this.hudVisible);
+  }
+
+  toggleHud() {
+    this.hudVisible = !this.hudVisible;
+    return this.hudVisible;
   }
 }

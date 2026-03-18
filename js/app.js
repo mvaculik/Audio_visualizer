@@ -47,6 +47,7 @@ class App {
       volumeSlider: document.getElementById('volume-slider'),
       ytInput: document.getElementById('yt-url-input'),
       btnYtLoad: document.getElementById('btn-yt-load'),
+      btnHud: document.getElementById('btn-hud'),
       songInfo: document.getElementById('song-info'),
       songName: document.querySelector('#song-info .song-name'),
       songSource: document.querySelector('#song-info .song-source'),
@@ -103,6 +104,11 @@ class App {
 
     // YouTube
     this.els.btnYtLoad.addEventListener('click', () => this._loadYouTube());
+    this.els.btnHud.addEventListener('click', () => {
+      const on = this.visualizer.toggleHud();
+      this.els.btnHud.classList.toggle('active', on);
+      this._showToast(on ? 'HUD: ON' : 'HUD: OFF');
+    });
     this.els.ytInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._loadYouTube();
     });
@@ -133,6 +139,11 @@ class App {
         case 'p': this._prevTrack(); break;
         case 'm': this._toggleMute(); break;
         case 'l': this._togglePlaylist(); break;
+        case 'h': {
+          const on = this.visualizer.toggleHud();
+          this._showToast(on ? 'HUD: ON' : 'HUD: OFF');
+          break;
+        }
         case '1': case '2': case '3': case '4': case '5':
           this._setMode(parseInt(e.key) - 1); break;
         case 'arrowup': e.preventDefault(); this._adjustVolume(5); break;
