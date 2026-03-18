@@ -29,11 +29,11 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     const value = freqData[freqIndex];
     const target = map(value, 0, 255, 2, maxBarHeight);
 
-    // Smooth interpolation (bars fall slower than they rise)
+    // Fast rise, moderate fall — snappy reaction
     if (target > smoothBars[i]) {
-      smoothBars[i] = lerp(smoothBars[i], target, 0.35);
+      smoothBars[i] = lerp(smoothBars[i], target, 0.55);
     } else {
-      smoothBars[i] = lerp(smoothBars[i], target, 0.08);
+      smoothBars[i] = lerp(smoothBars[i], target, 0.12);
     }
 
     const barH = smoothBars[i];
