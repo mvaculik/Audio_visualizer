@@ -1,16 +1,12 @@
 // js/visualizers/radial.js — FIRED radial visualizer with aggressive reactivity
 
-import { lerp, map, clamp, hslString, perlin, perlinOctaves } from '../utils.js';
+import { lerp, map, clamp, hslString, perlin } from '../utils.js';
 
 const BARS = 220;
-const FREE_PARTICLES = 100;
 const MAX_SHOCKWAVES = 5;
+const ORBIT_PARTICLES = 60;
 
-let freeParticles = [];
-let particleTime = 0;
-let patternPhase = 0;
-let patternTimer = 0;
-let dropSplashActive = 0; // 0-1, triggers full-screen splash
+let orbitParticles = [];
 let hueOffset = 0;
 let smoothRadius = 80;
 let rawBass = 0;
@@ -33,24 +29,17 @@ let portalGlitch = 0;
 let portalPulse = 0;
 
 export function init(canvas, ctx) {
-  const cw = canvas.width / (window.devicePixelRatio || 1);
-  const ch = canvas.height / (window.devicePixelRatio || 1);
-  freeParticles = [];
-  for (let i = 0; i < FREE_PARTICLES; i++) {
-    freeParticles.push({
-      x: cw / 2 + (Math.random() - 0.5) * cw * 0.6,
-      y: ch / 2 + (Math.random() - 0.5) * ch * 0.6,
-      vx: 0, vy: 0,
-      size: 1.5 + Math.random() * 3,
-      hueOff: (i / FREE_PARTICLES) * 360,
+  orbitParticles = [];
+  for (let i = 0; i < ORBIT_PARTICLES; i++) {
+    orbitParticles.push({
+      angle: (Math.PI * 2 * i) / ORBIT_PARTICLES,
+      dist: 0,
+      size: 1.5 + Math.random() * 2.5,
+      speed: 0.3 + Math.random() * 0.6,
+      hueOff: Math.random() * 120,
       trail: [],
-      band: i % 3,
     });
   }
-  particleTime = 0;
-  patternPhase = 0;
-  patternTimer = 0;
-  dropSplashActive = 0;
   shockwaves = [];
   smoothRadius = 80;
   rawBass = 0;
@@ -347,129 +336,37 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== FREE PARTICLES — patterns, formations, drop splash =====
-  particleTime += dt;
-  patternTimer += dt;
-
-  // Pattern switching every 3-5s or on hard beat
-  if (patternTimer > 3 + Math.random() * 2 || (isHardBeat && patternTimer > 1)) {
-    patternTimer = 0;
-    patternPhase = (patternPhase + 1) % 5;
-  }
-
-  // Drop splash: on hard beat, particles explode to screen edges
-  if (isHardBeat) dropSplashActive = 1;
-  dropSplashActive *= 0.96;
-
-  const bandVals = [rawBass, rawMid, rawHigh];
-
+  // ===== ORBIT PARTICLES around the circle =====
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  for (let i = 0; i < freeParticles.length; i++) {
-    const p = freeParticles[i];
-    const fi = i / freeParticles.length;
-    const bv = bandVals[p.band];
-    const freqIdx = Math.floor(fi * (freqData.length - 1));
-    const freqVal = freqData[freqIdx];
+  for (const p of orbitParticles) {
+    const freqIdx = Math.floor(map(p.hueOff, 0, 120, 10, freqData.length - 1));
+    const freqVal = freqData[clamp(freqIdx, 0, freqData.length - 1)] || 0;
 
-    // ===== PATTERN TARGETS =====
-    let tx = p.x, ty = p.y;
+    p.angle += (p.speed + map(freqVal, 0, 255, 0, 1.5)) * dt;
 
-    if (patternPhase === 0) {
-      // CONSTELLATION — scattered points connected by lines
-      const noiseX = perlinOctaves(fi * 4, particleTime * 0.2, 2) * w * 0.4;
-      const noiseY = perlinOctaves(fi * 4 + 50, particleTime * 0.2, 2) * h * 0.4;
-      tx = cx + noiseX;
-      ty = cy + noiseY;
-    } else if (patternPhase === 1) {
-      // WAVE — horizontal sine wave
-      const waveX = map(fi, 0, 1, w * 0.05, w * 0.95);
-      const waveY = cy + Math.sin(fi * Math.PI * 4 + particleTime * 2) * (80 + bv * 0.5);
-      tx = waveX;
-      ty = waveY;
-    } else if (patternPhase === 2) {
-      // SPIRAL — expanding from center
-      const spiralAngle = fi * Math.PI * 6 + particleTime * 0.5;
-      const spiralR = fi * minDim * 0.35 + map(bv, 0, 255, 0, 30);
-      tx = cx + Math.cos(spiralAngle) * spiralR;
-      ty = cy + Math.sin(spiralAngle) * spiralR;
-    } else if (patternPhase === 3) {
-      // DIAMOND — rotating diamond shape
-      const dAngle = fi * Math.PI * 2 + particleTime * 0.3;
-      const dR = minDim * 0.2 + map(bv, 0, 255, 0, 60);
-      // Diamond shape: |cos| + |sin| = 1
-      const dFactor = 1 / (Math.abs(Math.cos(dAngle)) + Math.abs(Math.sin(dAngle)));
-      tx = cx + Math.cos(dAngle) * dR * dFactor;
-      ty = cy + Math.sin(dAngle) * dR * dFactor;
-    } else {
-      // SCATTER — random positions, freq-driven jitter
-      const jitter = map(bv, 0, 255, 0, 8);
-      tx = cx + perlinOctaves(fi * 3, particleTime * 0.3, 2) * w * 0.45;
-      ty = cy + perlinOctaves(fi * 3 + 100, particleTime * 0.3, 2) * h * 0.45;
-      tx += (Math.random() - 0.5) * jitter;
-      ty += (Math.random() - 0.5) * jitter;
-    }
+    const orbitWave = Math.sin(p.angle * 0.4 + p.hueOff) * 15;
+    const targetDist = smoothRadius + 10 + map(freqVal, 0, 255, 5, 80) + orbitWave;
+    p.dist = lerp(p.dist, targetDist, 0.12);
 
-    // ===== FORCES =====
-    // Pull toward pattern target
-    const pullStrength = 0.02 + beatPower * 0.03;
-    p.vx += (tx - p.x) * pullStrength;
-    p.vy += (ty - p.y) * pullStrength;
+    if (isHardBeat) p.dist += 25 + Math.random() * 15;
 
-    // Beat push (outward from center)
-    if (isBeat) {
-      const dx = p.x - cx;
-      const dy = p.y - cy;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      p.vx += (dx / dist) * (5 + beatPower * 8);
-      p.vy += (dy / dist) * (5 + beatPower * 8);
-    }
+    const px = cx + Math.cos(p.angle) * p.dist;
+    const py = cy + Math.sin(p.angle) * p.dist;
+    const pHue = (hueOffset + p.hueOff * 2) % 360;
+    const pSize = p.size + map(freqVal, 0, 255, 0, 4) + beatPower * 2;
+    const pAlpha = map(freqVal, 0, 255, 0.15, 0.8);
 
-    // DROP SPLASH — massive explosion to edges
-    if (dropSplashActive > 0.5) {
-      const dx = p.x - cx;
-      const dy = p.y - cy;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      const splashForce = dropSplashActive * 25;
-      p.vx += (dx / dist) * splashForce;
-      p.vy += (dy / dist) * splashForce;
-    }
-
-    // Perlin noise drift
-    const noiseAngle = perlin(p.x * 0.003, p.y * 0.003 + particleTime * 0.2) * Math.PI * 2;
-    p.vx += Math.cos(noiseAngle) * 0.2;
-    p.vy += Math.sin(noiseAngle) * 0.2;
-
-    // Damping
-    p.vx *= 0.95;
-    p.vy *= 0.95;
-
-    // Integrate
-    p.x += p.vx * 60 * dt;
-    p.y += p.vy * 60 * dt;
-
-    // Soft wrap
-    if (p.x < -30) p.x = w + 30;
-    if (p.x > w + 30) p.x = -30;
-    if (p.y < -30) p.y = h + 30;
-    if (p.y > h + 30) p.y = -30;
-
-    // ===== TRAIL =====
-    p.trail.push({ x: p.x, y: p.y });
-    while (p.trail.length > 10) p.trail.shift();
-
-    // ===== RENDER =====
-    const pHue = (hueOffset + p.hueOff) % 360;
-    const pSize = p.size + map(freqVal, 0, 255, 0, 5) + beatPower * 2;
-    const pAlpha = map(freqVal, 0, 255, 0.2, 0.9);
+    p.trail.push({ x: px, y: py });
+    while (p.trail.length > 8) p.trail.shift();
 
     // Trail
     if (p.trail.length > 1) {
       for (let t = 1; t < p.trail.length; t++) {
         const ratio = t / p.trail.length;
         ctx.strokeStyle = hslString(pHue, 0.8, 0.6, ratio * pAlpha * 0.2);
-        ctx.lineWidth = ratio * pSize * 0.6;
+        ctx.lineWidth = ratio * pSize * 0.5;
         ctx.beginPath();
         ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
         ctx.lineTo(p.trail[t].x, p.trail[t].y);
@@ -480,44 +377,17 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     // Glow
     ctx.fillStyle = hslString(pHue, 0.9, 0.6, pAlpha * 0.1);
     ctx.beginPath();
-    ctx.arc(p.x, p.y, pSize + 6, 0, Math.PI * 2);
+    ctx.arc(px, py, pSize + 5, 0, Math.PI * 2);
     ctx.fill();
 
     // Core
-    ctx.fillStyle = hslString(pHue, 0.5, 0.9, pAlpha);
+    ctx.fillStyle = hslString(pHue, 0.4, 0.9, pAlpha);
     ctx.beginPath();
-    ctx.arc(p.x, p.y, pSize, 0, Math.PI * 2);
+    ctx.arc(px, py, pSize, 0, Math.PI * 2);
     ctx.fill();
-
-    // Connection lines between nearby particles
-    if (i < 60) {
-      for (let j = i + 1; j < Math.min(i + 6, freeParticles.length); j++) {
-        const p2 = freeParticles[j];
-        const d = Math.hypot(p.x - p2.x, p.y - p2.y);
-        if (d < 70 + beatPower * 30) {
-          const la = map(d, 0, 70, 0.08, 0) + beatPower * 0.05;
-          ctx.strokeStyle = hslString(pHue, 0.5, 0.6, la);
-          ctx.lineWidth = 0.5;
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
-      }
-    }
   }
 
   ctx.restore();
-
-  // ===== DROP SPLASH SHOCKWAVE =====
-  if (dropSplashActive > 0.3) {
-    const swR = (1 - dropSplashActive) * minDim * 0.6;
-    ctx.strokeStyle = hslString(hueOffset % 360, 0.8, 0.7, dropSplashActive * 0.3);
-    ctx.lineWidth = 3 + dropSplashActive * 5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, swR, 0, Math.PI * 2);
-    ctx.stroke();
-  }
 
   // ===== HARD BEAT: full screen colored flash =====
   if (isHardBeat) {
@@ -528,7 +398,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 }
 
 export function destroy() {
-  freeParticles = [];
+  orbitParticles = [];
   shockwaves = [];
   smoothRadius = 80;
   rawBass = 0;
