@@ -202,18 +202,16 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   const radsPerBar = (Math.PI * 2) / BARS;
   const halfBars = Math.floor(BARS / 2);
   const barStartR = 6;
+  const numBins = freqData.length; // 128 bins
 
-  // Build values: each bar maps directly to a frequency bin
-  // Use the SAME value array for both halves so it's perfectly symmetric
+  // Strategy: map 110 bars directly to 128 freq bins (linear stretch)
+  // Then mirror to second half. NO log mapping — keeps all bars equally loud.
   const barValues = new Float32Array(BARS);
   for (let i = 0; i < halfBars; i++) {
-    const t = i / halfBars;
-    const logT = Math.pow(t, 0.6);
-    const freqIdx = clamp(Math.floor(logT * (freqData.length - 1)), 0, freqData.length - 1);
-    const val = freqData[freqIdx];
-    barValues[i] = val;
+    const freqIdx = Math.floor((i / halfBars) * numBins);
+    barValues[i] = freqData[clamp(freqIdx, 0, numBins - 1)];
   }
-  // Mirror: copy first half into second half in reverse
+  // Mirror second half = exact reverse copy of first half
   for (let i = 0; i < halfBars; i++) {
     barValues[halfBars + i] = barValues[halfBars - 1 - i];
   }
@@ -222,10 +220,13 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   ctx.globalCompositeOperation = 'lighter';
 
   for (let i = 0; i < BARS; i++) {
-    const value = Math.max(barValues[i], 20); // minimum visible — always show bars
+    // Boost quiet frequencies so ALL bars are clearly visible
+    const raw = barValues[i];
+    const boosted = raw < 30 ? raw + 30 : raw; // lift quiet bars
+    const value = Math.max(boosted, 35);
 
     const maxBarH = minDim * 0.38;
-    const barHeight = map(value, 0, 255, 15, maxBarH);
+    const barHeight = map(value, 0, 255, 20, maxBarH);
     const barWidth = Math.max(1.5, map(value, 0, 255, 1.3, 4.5));
 
     const angle = radsPerBar * i + beatAccum; // ROTATE with music
