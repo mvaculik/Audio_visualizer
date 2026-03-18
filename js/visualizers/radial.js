@@ -184,50 +184,46 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   ctx.restore();
 
-  // ===== RADIAL BARS — from center outward, symmetric, full 360° =====
+  // ===== RADIAL BARS — log freq mapping, symmetric 360°, from center =====
   const radsPerBar = (Math.PI * 2) / BARS;
   const halfBars = Math.floor(BARS / 2);
-  const barStartR = 8; // bars start very close to center (fade zone)
+  const barStartR = 6;
+
+  // Pre-build symmetric frequency data with LOG mapping (more bass resolution)
+  const barValues = new Float32Array(BARS);
+  for (let i = 0; i < halfBars; i++) {
+    // Logarithmic mapping: more bars dedicated to bass/mids, fewer to highs
+    const t = i / halfBars; // 0→1
+    const logT = Math.pow(t, 0.6); // log curve — compresses highs
+    const freqIdx = Math.floor(logT * (freqData.length - 1));
+    const val = freqData[clamp(freqIdx, 0, freqData.length - 1)];
+    barValues[i] = val;
+    barValues[BARS - 1 - i] = val; // mirror
+  }
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
   for (let i = 0; i < BARS; i++) {
-    // Mirror: first half 0→max freq, second half max→0 (symmetric circle)
-    const mirrorIdx = i < halfBars ? i : BARS - 1 - i;
-    const freqIndex = Math.floor(map(mirrorIdx, 0, halfBars, 0, freqData.length - 1));
-    const rawValue = freqData[clamp(freqIndex, 0, freqData.length - 1)];
-
-    const value = Math.max(rawValue, 5);
+    const value = Math.max(barValues[i], 12); // minimum visible bar
 
     const maxBarH = minDim * 0.38;
-    const barHeight = map(value, 0, 255, 4, maxBarH);
-    const barWidth = Math.max(1.2, map(value, 0, 255, 1, 4));
+    const barHeight = map(value, 0, 255, 8, maxBarH);
+    const barWidth = Math.max(1.3, map(value, 0, 255, 1.2, 4.5));
 
     const angle = radsPerBar * i + beatAccum;
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
 
-    // Bar starts near center, ends far out
     const x1 = cx + cosA * barStartR;
     const y1 = cy + sinA * barStartR;
     const x2 = cx + cosA * (barStartR + barHeight);
     const y2 = cy + sinA * (barStartR + barHeight);
 
-    // Color: symmetric gradient around circle
-    const ratio = freqIndex / freqData.length;
-    let barHue;
-    if (ratio < 0.15) {
-      barHue = map(value, 0, 255, 10, 40);
-    } else if (ratio < 0.5) {
-      barHue = (hueOffset + i * 0.8) % 360;
-    } else {
-      barHue = map(ratio, 0.5, 1, 180, 260);
-    }
-
-    // Alpha fades near center (inner part dimmer, outer brighter)
-    const alpha = map(value, 0, 255, 0.1, 0.95);
-    const lightness = map(value, 0, 255, 0.35, 0.75);
+    // Color: smooth hue around circle (position-based, not freq-based)
+    const barHue = (hueOffset + (i / BARS) * 360) % 360;
+    const alpha = map(value, 0, 255, 0.08, 0.95);
+    const lightness = map(value, 0, 255, 0.3, 0.75);
 
     // Outer glow
     ctx.strokeStyle = hslString(barHue, 0.95, lightness, alpha * 0.15);
@@ -254,8 +250,8 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     ctx.stroke();
 
     // Hot tip spark
-    if (value > 170) {
-      const sparkSize = map(value, 170, 255, 1, 5);
+    if (value > 160) {
+      const sparkSize = map(value, 160, 255, 1.5, 5);
       ctx.fillStyle = hslString(barHue, 0.5, 0.9, alpha * 0.8);
       ctx.beginPath();
       ctx.arc(x2, y2, sparkSize, 0, Math.PI * 2);
@@ -340,55 +336,80 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== ORBIT PARTICLES — with trails =====
+  // ===== ORBIT COMETS — energy trails, variable orbits, beat-reactive =====
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
   for (const p of orbitParticles) {
-    // Speed reacts to highs
-    const freqIdx = Math.floor(map(p.hueOff, 0, 120, 50, freqData.length - 1));
-    const highVal = freqData[clamp(freqIdx, 0, freqData.length - 1)] || 0;
+    const freqIdx = Math.floor(map(p.hueOff, 0, 120, 10, freqData.length - 1));
+    const freqVal = freqData[clamp(freqIdx, 0, freqData.length - 1)] || 0;
 
-    p.angle += (p.speed + map(highVal, 0, 255, 0, 2)) * dt;
+    // Speed: base + frequency + beat burst
+    const speedMult = 1 + map(freqVal, 0, 255, 0, 3) + beatPower * 2;
+    p.angle += p.speed * speedMult * dt;
 
-    // Distance reacts to frequency
-    const targetDist = smoothRadius + 15 + map(highVal, 0, 255, 5, 120);
-    p.dist = lerp(p.dist, targetDist, 0.15);
+    // Orbit distance: oscillates + reacts to freq
+    const orbitWave = Math.sin(p.angle * 0.3 + p.hueOff) * 25;
+    const targetDist = smoothRadius * 0.7 + map(freqVal, 0, 255, 10, minDim * 0.2) + orbitWave;
+    p.dist = lerp(p.dist, targetDist, 0.12);
 
     // Beat explosion
-    if (isHardBeat) p.dist += 30 + Math.random() * 20;
+    if (isHardBeat) p.dist += 40 + Math.random() * 30;
+    if (isBeat) p.dist += 10;
 
     const px = cx + Math.cos(p.angle) * p.dist;
     const py = cy + Math.sin(p.angle) * p.dist;
-    const pHue = (hueOffset + p.hueOff * 2) % 360;
-    const pSize = p.size + map(highVal, 0, 255, 0, 5);
-    const pAlpha = map(highVal, 0, 255, 0.3, 0.9);
+    const pHue = (hueOffset + p.hueOff * 2.5) % 360;
+    const pSize = p.size + map(freqVal, 0, 255, 0, 6) + beatPower * 3;
+    const pAlpha = map(freqVal, 0, 255, 0.2, 1.0);
 
-    // Trail
-    p.trail.push({ x: px, y: py, alpha: pAlpha });
-    if (p.trail.length > 6) p.trail.shift();
+    // Long comet trail (16 points)
+    p.trail.push({ x: px, y: py });
+    while (p.trail.length > 16) p.trail.shift();
 
-    for (let t = 0; t < p.trail.length; t++) {
-      const tp = p.trail[t];
-      const tAlpha = (t / p.trail.length) * pAlpha * 0.3;
-      const tSize = pSize * (t / p.trail.length) * 0.6;
-      ctx.fillStyle = hslString(pHue, 0.8, 0.6, tAlpha);
-      ctx.beginPath();
-      ctx.arc(tp.x, tp.y, tSize, 0, Math.PI * 2);
-      ctx.fill();
+    // Draw trail as fading line
+    if (p.trail.length > 1) {
+      for (let t = 1; t < p.trail.length; t++) {
+        const ratio = t / p.trail.length;
+        const tAlpha = ratio * pAlpha * 0.3;
+        const tWidth = ratio * pSize * 0.8;
+        ctx.strokeStyle = hslString(pHue, 0.8, 0.6, tAlpha);
+        ctx.lineWidth = tWidth;
+        ctx.beginPath();
+        ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
+        ctx.lineTo(p.trail[t].x, p.trail[t].y);
+        ctx.stroke();
+      }
     }
 
-    // Glow
-    ctx.fillStyle = hslString(pHue, 0.9, 0.65, pAlpha * 0.25);
+    // Wide glow
+    ctx.fillStyle = hslString(pHue, 0.9, 0.6, pAlpha * 0.12);
     ctx.beginPath();
-    ctx.arc(px, py, pSize + 6, 0, Math.PI * 2);
+    ctx.arc(px, py, pSize + 10, 0, Math.PI * 2);
     ctx.fill();
 
-    // Core
-    ctx.fillStyle = hslString(pHue, 0.85, 0.8, pAlpha);
+    // Mid glow
+    ctx.fillStyle = hslString(pHue, 0.85, 0.7, pAlpha * 0.35);
+    ctx.beginPath();
+    ctx.arc(px, py, pSize + 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core (white-hot center)
+    ctx.fillStyle = hslString(pHue, 0.4, 0.9, pAlpha);
     ctx.beginPath();
     ctx.arc(px, py, pSize, 0, Math.PI * 2);
     ctx.fill();
+
+    // Energy connection line to center (faint)
+    if (freqVal > 120) {
+      const lineAlpha = map(freqVal, 120, 255, 0, 0.06);
+      ctx.strokeStyle = hslString(pHue, 0.5, 0.6, lineAlpha);
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
