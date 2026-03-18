@@ -198,21 +198,24 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   ctx.restore();
 
-  // ===== RADIAL BARS — log freq mapping, symmetric 360°, from center =====
+  // ===== RADIAL BARS — symmetric 360°, BOTH halves show full spectrum =====
   const radsPerBar = (Math.PI * 2) / BARS;
   const halfBars = Math.floor(BARS / 2);
   const barStartR = 6;
 
-  // Pre-build symmetric frequency data with LOG mapping (more bass resolution)
+  // Each HALF of the circle shows the complete frequency spectrum (bass→high)
+  // Right half (0°→180°) and left half (180°→360°) are exact mirrors
   const barValues = new Float32Array(BARS);
   for (let i = 0; i < halfBars; i++) {
-    // Logarithmic mapping: more bars dedicated to bass/mids, fewer to highs
-    const t = i / halfBars; // 0→1
-    const logT = Math.pow(t, 0.6); // log curve — compresses highs
+    const t = i / halfBars;
+    const logT = Math.pow(t, 0.6);
     const freqIdx = Math.floor(logT * (freqData.length - 1));
     const val = freqData[clamp(freqIdx, 0, freqData.length - 1)];
+
+    // Right half: bar 0 (0°) → bar 109 (just before 180°) = bass → high
     barValues[i] = val;
-    barValues[BARS - 1 - i] = val; // mirror
+    // Left half: bar 219 (just after 0°/360°) → bar 110 (180°) = bass → high (mirror)
+    barValues[halfBars + (halfBars - 1 - i)] = val;
   }
 
   ctx.save();
