@@ -19,6 +19,11 @@ let screenFlashHue = 0;
 let edgeFlashAlpha = 0;
 let edgeFlashHue = 0;
 
+// Floating text system
+let floatingTexts = [];
+let lastWordCount = 0;
+let floatSpawnTimer = 0;
+
 function pushAlert(id, text, color, duration = 2.5) {
   // Cooldown check — same alert can't fire within cooldown period
   const now = Date.now();
@@ -484,6 +489,119 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
     w / 2, pad + 12
   );
   ctx.textAlign = 'left';
+
+  // ===== FLOATING RECOGNIZED WORDS =====
+  const recentWords = mi.getRecentWords ? mi.getRecentWords(5) : [];
+
+  // Spawn new floating text for new words
+  if (recentWords.length > lastWordCount) {
+    for (let i = lastWordCount; i < recentWords.length; i++) {
+      const word = recentWords[i];
+      if (!word.final && word.text.length < 3) continue;
+      floatingTexts.push({
+        text: word.text,
+        x: 0.1 + Math.random() * 0.8,
+        y: 0.2 + Math.random() * 0.6,
+        vx: (Math.random() - 0.5) * 0.02,
+        vy: -0.01 - Math.random() * 0.02,
+        size: 18 + Math.random() * 28,
+        alpha: 1,
+        hue: (hue + Math.random() * 120) % 360,
+        rotation: (Math.random() - 0.5) * 0.3,
+        type: 'word',
+      });
+    }
+  }
+  lastWordCount = recentWords.length;
+
+  // Spawn energy-based floating effects on beats
+  floatSpawnTimer += dt;
+  if (mi.beatPhase < 0.05 && floatSpawnTimer > 0.3 && mi.totalEnergy > 50) {
+    floatSpawnTimer = 0;
+    const effectTexts = [
+      '///PULSE', '>>SYNC', '◆◆◆', '★★★', '⚡⚡', '♪♫♪',
+      '::BEAT::', '▶▶▶', '∞∞∞', '✦✦✦', '≋≋≋', '◈◈◈',
+    ];
+    if (Math.random() > 0.5) {
+      floatingTexts.push({
+        text: effectTexts[Math.floor(Math.random() * effectTexts.length)],
+        x: Math.random(),
+        y: 0.3 + Math.random() * 0.4,
+        vx: (Math.random() - 0.5) * 0.03,
+        vy: (Math.random() - 0.5) * 0.02,
+        size: 10 + Math.random() * 14,
+        alpha: 0.5 + Math.random() * 0.3,
+        hue: (hue + Math.random() * 60) % 360,
+        rotation: 0,
+        type: 'effect',
+      });
+    }
+  }
+
+  // Drop-triggered big text
+  if (mi.isDropping && mi.dropTimer > 1.3) {
+    const dropTexts = ['BASS', 'DROP', 'BOOM', 'FIRE', '🔥', '💥'];
+    floatingTexts.push({
+      text: dropTexts[Math.floor(Math.random() * dropTexts.length)],
+      x: 0.3 + Math.random() * 0.4,
+      y: 0.3 + Math.random() * 0.4,
+      vx: (Math.random() - 0.5) * 0.04,
+      vy: (Math.random() - 0.5) * 0.03,
+      size: 36 + Math.random() * 30,
+      alpha: 1,
+      hue: (hue + 180) % 360,
+      rotation: (Math.random() - 0.5) * 0.5,
+      type: 'drop',
+    });
+  }
+
+  // Update & render floating texts
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+
+    ft.x += ft.vx * dt;
+    ft.y += ft.vy * dt;
+    ft.rotation *= 0.98;
+
+    // Decay speed based on type
+    if (ft.type === 'word') ft.alpha -= dt * 0.25;
+    else if (ft.type === 'drop') ft.alpha -= dt * 0.4;
+    else ft.alpha -= dt * 0.35;
+
+    // Scale effect: grows slightly then shrinks
+    const lifeRatio = ft.alpha;
+    const scale = ft.type === 'drop'
+      ? 1 + (1 - lifeRatio) * 0.5
+      : 1;
+
+    if (ft.alpha <= 0) { floatingTexts.splice(i, 1); continue; }
+
+    const fx = ft.x * w;
+    const fy = ft.y * h;
+
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.rotate(ft.rotation);
+    ctx.scale(scale, scale);
+
+    const ftSize = ft.size;
+    ctx.font = `700 ${ftSize}px monospace`;
+    ctx.textAlign = 'center';
+
+    // Glow
+    ctx.fillStyle = hslString(ft.hue, 0.8, 0.6, ft.alpha * 0.15);
+    ctx.fillText(ft.text, 2, 2);
+    ctx.fillText(ft.text, -2, -2);
+
+    // Main text
+    ctx.fillStyle = hslString(ft.hue, 0.7, 0.8, ft.alpha);
+    ctx.fillText(ft.text, 0, 0);
+
+    ctx.restore();
+  }
+
+  // Cap floating texts
+  while (floatingTexts.length > 25) floatingTexts.shift();
 
   ctx.restore();
 }

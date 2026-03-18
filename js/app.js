@@ -207,6 +207,7 @@ class App {
 
     // Start visualizer
     this.visualizer.start();
+    this.visualizer.mi.startSpeechRecognition();
     this._renderLoop();
 
     // Play first track

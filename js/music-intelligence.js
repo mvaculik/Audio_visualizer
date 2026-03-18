@@ -308,4 +308,52 @@ export class MusicIntelligence {
     }
     return slice;
   }
+
+  // ===== SPEECH RECOGNITION =====
+  startSpeechRecognition() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { console.warn('SpeechRecognition not supported'); return; }
+
+    this.recognizedWords = [];
+    this._recognition = new SR();
+    this._recognition.continuous = true;
+    this._recognition.interimResults = true;
+    this._recognition.lang = 'en-US';
+    this._recognition.maxAlternatives = 1;
+
+    this._recognition.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript.trim();
+        if (transcript.length > 0) {
+          // Split into individual words, push each
+          const words = transcript.split(/\s+/);
+          for (const word of words) {
+            if (word.length > 1) {
+              this.recognizedWords.push({
+                text: word.toUpperCase(),
+                time: this._time,
+                final: e.results[i].isFinal,
+              });
+            }
+          }
+          // Keep last 30 words
+          while (this.recognizedWords.length > 30) this.recognizedWords.shift();
+        }
+      }
+    };
+
+    this._recognition.onerror = () => { /* silent */ };
+    this._recognition.onend = () => {
+      // Auto-restart
+      try { this._recognition.start(); } catch (e) { /* already running */ }
+    };
+
+    try { this._recognition.start(); } catch (e) { /* */ }
+  }
+
+  getRecentWords(maxAge = 4) {
+    if (!this.recognizedWords) return [];
+    const cutoff = this._time - maxAge;
+    return this.recognizedWords.filter(w => w.time > cutoff);
+  }
 }

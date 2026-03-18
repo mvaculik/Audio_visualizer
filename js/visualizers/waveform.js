@@ -1,4 +1,4 @@
-// js/visualizers/waveform.js — Oscilloscope with neon glow and trail persistence
+// js/visualizers/waveform.js — Multi-layer oscilloscope with glow, mirror, freq bars
 
 import { lerp, map, clamp, hslString } from '../utils.js';
 
@@ -6,6 +6,8 @@ let trailCanvas = null;
 let trailCtx = null;
 let hueShift = 0;
 let prevW = 0, prevH = 0;
+let prevBass = 0;
+let flashAlpha = 0;
 
 export function init(canvas, ctx) {
   trailCanvas = document.createElement('canvas');
@@ -13,6 +15,8 @@ export function init(canvas, ctx) {
   prevW = 0;
   prevH = 0;
   hueShift = 0;
+  prevBass = 0;
+  flashAlpha = 0;
 }
 
 function ensureTrailSize(w, h) {
@@ -30,7 +34,22 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   ensureTrailSize(w, h);
   hueShift += dt * 25;
 
-  // Calculate RMS volume for line thickness
+  // Bass for flash
+  let bassNow = 0;
+  for (let i = 0; i < 10; i++) bassNow += freqData[i];
+  bassNow /= 10;
+  const bassDelta = bassNow - prevBass;
+  if (bassDelta > 20) flashAlpha = Math.max(flashAlpha, 0.1);
+  prevBass = lerp(prevBass, bassNow, 0.3);
+  flashAlpha *= 0.88;
+
+  // Flash
+  if (flashAlpha > 0.005) {
+    ctx.fillStyle = hslString(hueShift % 360, 0.6, 0.7, flashAlpha);
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // RMS volume
   let rms = 0;
   for (let i = 0; i < timeData.length; i++) {
     const v = (timeData[i] - 128) / 128;
@@ -38,76 +57,73 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   rms = Math.sqrt(rms / timeData.length);
 
-  const lineWidth = map(rms, 0, 0.5, 2, 8);
+  const lineWidth = map(rms, 0, 0.5, 1.5, 6);
   const hue = hueShift % 360;
-
-  // Fade previous trail
-  trailCtx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-  trailCtx.fillRect(0, 0, w, h);
-
-  // Draw waveform on trail canvas
-  const sliceWidth = w / timeData.length;
   const centerY = h / 2;
 
-  // Outer glow pass
-  trailCtx.strokeStyle = hslString(hue, 0.9, 0.6, 0.2);
-  trailCtx.lineWidth = lineWidth + 10;
-  trailCtx.lineCap = 'round';
-  trailCtx.lineJoin = 'round';
+  // Fade trail
+  trailCtx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+  trailCtx.fillRect(0, 0, w, h);
+
+  const sliceWidth = w / timeData.length;
+
+  // Draw multiple waveform layers on trail canvas
+  const layers = [
+    { hue: hue, alpha: 0.95, width: lineWidth, amp: 0.38, yOff: 0 },
+    { hue: (hue + 90) % 360, alpha: 0.2, width: lineWidth * 0.6, amp: 0.25, yOff: -10 },
+    { hue: (hue + 180) % 360, alpha: 0.15, width: lineWidth * 0.4, amp: 0.2, yOff: 10 },
+  ];
+
+  for (const layer of layers) {
+    // Outer glow
+    trailCtx.strokeStyle = hslString(layer.hue, 0.9, 0.6, layer.alpha * 0.2);
+    trailCtx.lineWidth = layer.width + 8;
+    trailCtx.lineCap = 'round';
+    trailCtx.lineJoin = 'round';
+    trailCtx.beginPath();
+    for (let i = 0; i < timeData.length; i++) {
+      const v = (timeData[i] - 128) / 128;
+      const y = centerY + layer.yOff + v * h * layer.amp;
+      if (i === 0) trailCtx.moveTo(i * sliceWidth, y);
+      else trailCtx.lineTo(i * sliceWidth, y);
+    }
+    trailCtx.stroke();
+
+    // Core line
+    trailCtx.strokeStyle = hslString(layer.hue, 0.7, 0.85, layer.alpha);
+    trailCtx.lineWidth = layer.width;
+    trailCtx.beginPath();
+    for (let i = 0; i < timeData.length; i++) {
+      const v = (timeData[i] - 128) / 128;
+      const y = centerY + layer.yOff + v * h * layer.amp;
+      if (i === 0) trailCtx.moveTo(i * sliceWidth, y);
+      else trailCtx.lineTo(i * sliceWidth, y);
+    }
+    trailCtx.stroke();
+  }
+
+  // Mirror waveform (below center, inverted, dimmer)
+  trailCtx.save();
+  trailCtx.globalAlpha = 0.15;
+  trailCtx.translate(0, centerY);
+  trailCtx.scale(1, -1);
+  trailCtx.translate(0, -centerY);
+  trailCtx.strokeStyle = hslString(hue, 0.6, 0.5, 0.3);
+  trailCtx.lineWidth = lineWidth * 0.7;
   trailCtx.beginPath();
   for (let i = 0; i < timeData.length; i++) {
     const v = (timeData[i] - 128) / 128;
-    const y = centerY + v * h * 0.35;
-    const x = i * sliceWidth;
-    if (i === 0) trailCtx.moveTo(x, y);
-    else trailCtx.lineTo(x, y);
+    const y = centerY + v * h * 0.38;
+    if (i === 0) trailCtx.moveTo(i * sliceWidth, y);
+    else trailCtx.lineTo(i * sliceWidth, y);
   }
   trailCtx.stroke();
+  trailCtx.restore();
 
-  // Mid glow pass
-  trailCtx.strokeStyle = hslString(hue, 0.85, 0.55, 0.4);
-  trailCtx.lineWidth = lineWidth + 4;
-  trailCtx.beginPath();
-  for (let i = 0; i < timeData.length; i++) {
-    const v = (timeData[i] - 128) / 128;
-    const y = centerY + v * h * 0.35;
-    const x = i * sliceWidth;
-    if (i === 0) trailCtx.moveTo(x, y);
-    else trailCtx.lineTo(x, y);
-  }
-  trailCtx.stroke();
-
-  // Core line (bright)
-  trailCtx.strokeStyle = hslString(hue, 0.7, 0.85, 0.95);
-  trailCtx.lineWidth = lineWidth;
-  trailCtx.beginPath();
-  for (let i = 0; i < timeData.length; i++) {
-    const v = (timeData[i] - 128) / 128;
-    const y = centerY + v * h * 0.35;
-    const x = i * sliceWidth;
-    if (i === 0) trailCtx.moveTo(x, y);
-    else trailCtx.lineTo(x, y);
-  }
-  trailCtx.stroke();
-
-  // Draw second harmonic line (subtle, offset hue)
-  const hue2 = (hue + 120) % 360;
-  trailCtx.strokeStyle = hslString(hue2, 0.8, 0.6, 0.15);
-  trailCtx.lineWidth = lineWidth * 0.5;
-  trailCtx.beginPath();
-  for (let i = 0; i < timeData.length; i++) {
-    const v = (timeData[i] - 128) / 128;
-    const y = centerY + v * h * 0.2 + Math.sin(i * 0.05 + hueShift * 0.1) * 20;
-    const x = i * sliceWidth;
-    if (i === 0) trailCtx.moveTo(x, y);
-    else trailCtx.lineTo(x, y);
-  }
-  trailCtx.stroke();
-
-  // Composite trail onto main canvas
+  // Composite trail
   ctx.drawImage(trailCanvas, 0, 0);
 
-  // Center line (subtle reference)
+  // Center line
   ctx.strokeStyle = 'rgba(255,255,255,0.03)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -115,18 +131,37 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   ctx.lineTo(w, centerY);
   ctx.stroke();
 
-  // Frequency intensity indicator (small bars at bottom)
-  const numIndicators = 32;
-  const indicatorWidth = w / numIndicators;
-  for (let i = 0; i < numIndicators; i++) {
-    const freqIdx = Math.floor(map(i, 0, numIndicators, 0, freqData.length - 1));
+  // Bottom frequency bars (mini equalizer)
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const numBars = 48;
+  const barW = w / numBars;
+  for (let i = 0; i < numBars; i++) {
+    const freqIdx = Math.floor(Math.pow(i / numBars, 0.7) * (freqData.length - 1));
     const val = freqData[freqIdx];
-    const barH = map(val, 0, 255, 1, 30);
-    const iHue = (hue + i * 8) % 360;
+    const barH = map(val, 0, 255, 1, 50);
+    const bHue = (hue + i * 6) % 360;
 
-    ctx.fillStyle = hslString(iHue, 0.8, 0.5, 0.3);
-    ctx.fillRect(i * indicatorWidth, h - barH, indicatorWidth - 1, barH);
+    // Bottom bars
+    ctx.fillStyle = hslString(bHue, 0.8, 0.5, 0.25);
+    ctx.fillRect(i * barW, h - barH, barW - 1, barH);
+
+    // Top bars (mirror)
+    ctx.fillStyle = hslString(bHue, 0.8, 0.5, 0.12);
+    ctx.fillRect(i * barW, 0, barW - 1, barH * 0.5);
   }
+  ctx.restore();
+
+  // Energy indicator circles (left and right)
+  const energy = rms * 4;
+  const circR = 20 + energy * 60;
+  ctx.fillStyle = hslString(hue, 0.7, 0.5, energy * 0.15);
+  ctx.beginPath();
+  ctx.arc(50, centerY, circR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(w - 50, centerY, circR, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 export function destroy() {
