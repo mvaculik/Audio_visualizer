@@ -166,25 +166,25 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   if (isSupernova) {
     warpPower = 1.0;
     beatPower = 1.0;
-    flashAlpha = 0.35;
-    shakeX = (Math.random() - 0.5) * 20;
-    shakeY = (Math.random() - 0.5) * 20;
+    flashAlpha = 0.08;
+    shakeX = (Math.random() - 0.5) * 8;
+    shakeY = (Math.random() - 0.5) * 8;
   } else if (isHardBeat) {
     warpPower = Math.max(warpPower, 0.6);
     beatPower = Math.max(beatPower, 0.7);
-    flashAlpha = Math.max(flashAlpha, 0.12);
-    shakeX = (Math.random() - 0.5) * 10;
-    shakeY = (Math.random() - 0.5) * 10;
+    flashAlpha = Math.max(flashAlpha, 0.04);
+    shakeX = (Math.random() - 0.5) * 4;
+    shakeY = (Math.random() - 0.5) * 4;
   } else if (isBeat) {
     beatPower = Math.max(beatPower, 0.4);
-    flashAlpha = Math.max(flashAlpha, 0.04);
-    shakeX += (Math.random() - 0.5) * 3;
-    shakeY += (Math.random() - 0.5) * 3;
+    flashAlpha = Math.max(flashAlpha, 0.015);
+    shakeX += (Math.random() - 0.5) * 1.5;
+    shakeY += (Math.random() - 0.5) * 1.5;
   }
 
   beatPower *= 0.9;
   warpPower *= 0.86;
-  flashAlpha *= 0.84;
+  flashAlpha *= 0.9; // faster decay
   shakeX *= 0.85;
   shakeY *= 0.85;
 

@@ -324,19 +324,19 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
   if (mi.emotion !== prevEmotion && mi.emotion !== 'ANALYZING' && mi.emotion !== 'SILENT') {
     if (mi.emotion === 'HARD DROP') {
       pushAlert('drop', 'HARD DROP DETECTED', hslString(330, 0.9, 0.65, 1), 2);
-      screenFlashAlpha = 0.3;
+      screenFlashAlpha = 0.07;
       screenFlashHue = 330;
     } else if (mi.emotion === 'BUILD UP') {
       pushAlert('buildup', 'ENERGY BUILD-UP', hslString(40, 0.9, 0.6, 1), 2);
-      edgeFlashAlpha = 0.4;
+      edgeFlashAlpha = 0.12;
       edgeFlashHue = 40;
     } else if (mi.emotion === 'AGGRESSIVE') {
       pushAlert('aggressive', 'MODE: AGGRESSIVE', hslString(0, 0.9, 0.6, 1), 2);
-      edgeFlashAlpha = 0.3;
+      edgeFlashAlpha = 0.1;
       edgeFlashHue = 0;
     } else if (mi.emotion === 'EUPHORIC') {
       pushAlert('euphoric', 'EUPHORIA DETECTED', hslString(50, 0.9, 0.7, 1), 2);
-      edgeFlashAlpha = 0.25;
+      edgeFlashAlpha = 0.08;
       edgeFlashHue = 50;
     } else {
       pushAlert('mood', `MOOD: ${mi.emotion}`, getEmotionColor(mi.emotion, hue), 1.5);
@@ -358,14 +358,14 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
 
   // Alert: drop detected
   if (mi.isDropping && mi.dropTimer > 1.4) { // just triggered
-    screenFlashAlpha = Math.max(screenFlashAlpha, 0.35);
+    screenFlashAlpha = Math.max(screenFlashAlpha, 0.08);
     screenFlashHue = (hue + 180) % 360;
   }
 
   // Alert: high energy spike
   if (mi.totalEnergy > 180 && mi.spectralFlux > 12) {
     pushAlert('spike', 'ENERGY SPIKE', hslString(20, 0.9, 0.6, 1), 1.5);
-    screenFlashAlpha = Math.max(screenFlashAlpha, 0.12);
+    screenFlashAlpha = Math.max(screenFlashAlpha, 0.04);
     screenFlashHue = 20;
   }
 
@@ -378,7 +378,7 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
   if (screenFlashAlpha > 0.005) {
     ctx.fillStyle = hslString(screenFlashHue, 0.7, 0.7, screenFlashAlpha);
     ctx.fillRect(0, 0, w, h);
-    screenFlashAlpha *= 0.9;
+    screenFlashAlpha *= 0.92; // faster decay
   }
 
   // ===== EDGE FLASH (border glow on events) =====

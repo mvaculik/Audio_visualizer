@@ -105,23 +105,23 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   else if (isBeat) beatPower = Math.max(beatPower, 0.5);
   beatPower *= 0.92;
 
-  // ===== SCREEN FLASH on beats =====
+  // ===== SCREEN FLASH on beats — subtle, no eye pain =====
   if (isHardBeat) {
-    flashAlpha = clamp(0.25 + bassDelta * 0.004, 0.2, 0.55);
-    screenShakeX = (Math.random() - 0.5) * clamp(bassDelta * 0.3, 0, 15);
-    screenShakeY = (Math.random() - 0.5) * clamp(bassDelta * 0.3, 0, 15);
+    flashAlpha = clamp(0.06 + bassDelta * 0.001, 0.04, 0.12);
+    screenShakeX = (Math.random() - 0.5) * clamp(bassDelta * 0.15, 0, 6);
+    screenShakeY = (Math.random() - 0.5) * clamp(bassDelta * 0.15, 0, 6);
   } else if (isBeat) {
-    flashAlpha = Math.max(flashAlpha, 0.08 + bassDelta * 0.002);
-    screenShakeX = (Math.random() - 0.5) * 3;
-    screenShakeY = (Math.random() - 0.5) * 3;
+    flashAlpha = Math.max(flashAlpha, 0.02 + bassDelta * 0.0005);
+    screenShakeX = (Math.random() - 0.5) * 1.5;
+    screenShakeY = (Math.random() - 0.5) * 1.5;
   }
 
-  // Flash render
-  if (flashAlpha > 0.005) {
+  // Flash render — gentle glow
+  if (flashAlpha > 0.003) {
     const flashHue = hueOffset % 360;
-    ctx.fillStyle = hslString(flashHue, 0.6, 0.85, flashAlpha);
+    ctx.fillStyle = hslString(flashHue, 0.5, 0.7, flashAlpha);
     ctx.fillRect(0, 0, w, h);
-    flashAlpha *= 0.82; // fast decay
+    flashAlpha *= 0.88; // faster decay = shorter flash
   }
 
   // Shake decay
@@ -456,7 +456,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   if (dropCooldown <= 0 && (classicDrop || silenceDrop || obviousDrop)) {
     dropCooldown = 3;
-    flashAlpha = Math.max(flashAlpha, 0.35);
+    flashAlpha = Math.max(flashAlpha, 0.10); // subtle drop flash
 
     const numR = 5 + Math.floor(Math.random() * 4);
     for (let r = 0; r < numR; r++) {
@@ -513,7 +513,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
         });
       }
       dropRockets.splice(i, 1);
-      flashAlpha = Math.max(flashAlpha, 0.12);
+      flashAlpha = Math.max(flashAlpha, 0.06);
     }
   }
 

@@ -34,8 +34,8 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   const isBeat = bassDelta > 15 && bassNow > 80;
   prevBass = lerp(prevBass, bassNow, 0.3);
 
-  if (isBeat) flashAlpha = Math.max(flashAlpha, 0.08 + bassDelta * 0.002);
-  flashAlpha *= 0.88;
+  if (isBeat) flashAlpha = Math.max(flashAlpha, 0.02 + bassDelta * 0.0005);
+  flashAlpha *= 0.92;
 
   // Screen flash
   if (flashAlpha > 0.005) {

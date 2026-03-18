@@ -39,9 +39,9 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   for (let i = 0; i < 10; i++) bassNow += freqData[i];
   bassNow /= 10;
   const bassDelta = bassNow - prevBass;
-  if (bassDelta > 20) flashAlpha = Math.max(flashAlpha, 0.1);
+  if (bassDelta > 20) flashAlpha = Math.max(flashAlpha, 0.03);
   prevBass = lerp(prevBass, bassNow, 0.3);
-  flashAlpha *= 0.88;
+  flashAlpha *= 0.92;
 
   // Flash
   if (flashAlpha > 0.005) {

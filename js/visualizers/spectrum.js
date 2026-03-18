@@ -71,10 +71,10 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   prevBass = lerp(prevBass, bassNow, 0.3);
 
   if (isBeat) {
-    flashAlpha = Math.max(flashAlpha, 0.06);
+    flashAlpha = Math.max(flashAlpha, 0.02);
     beatMarkers.push({ alpha: 1 });
   }
-  flashAlpha *= 0.88;
+  flashAlpha *= 0.92;
 
   // Flash
   if (flashAlpha > 0.005) {
