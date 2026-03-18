@@ -27,7 +27,12 @@ let quietFrames = 0;
 let loudHistory = new Float32Array(30);
 let loudIdx = 0;
 
-export function init() {
+export function destroy() {
+  nodes = [];
+  threads = [];
+}
+
+export function init(canvas, ctx) {
   nodes = [];
   threads = [];
   hueBase = Math.random() * 360;
