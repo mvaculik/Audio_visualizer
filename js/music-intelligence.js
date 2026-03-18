@@ -37,14 +37,21 @@ export class MusicIntelligence {
     this.brightness = 0;
     this._smoothBrightness = 0;
 
-    // Drop predictor
+    // Drop predictor — based on real EDM structure analysis
     this.dropCharge = 0;
     this.isDropping = false;
-    this.dropTimer = 0; // how long the DROP text stays visible
-    this._energyRiseCounter = 0;
-    this._prevTotalEnergy = 0;
+    this.dropTimer = 0;
     this._dropCooldown = 0;
-    this._recentEnergySlope = 0;
+
+    // Build-up tracking
+    this._centroidHistory = new Float32Array(60); // ~3s at 20fps
+    this._bassHistory60 = new Float32Array(60);
+    this._energyHistory60 = new Float32Array(60);
+    this._histIdx60 = 0;
+    this._buildupScore = 0;    // how much we're in a build-up
+    this._bassVacuum = false;  // bass has dropped out
+    this._preSilence = false;  // brief silence before drop
+    this._prevTotalEnergy = 0;
 
     // Emotion
     this.emotion = 'ANALYZING';
@@ -196,51 +203,112 @@ export class MusicIntelligence {
       this.beatPhase = clamp(this.timeSinceBeat / this._beatInterval, 0, 1);
     }
 
-    // ===== DROP PREDICTOR — much more sensitive =====
+    // ===== DROP PREDICTOR — based on real EDM structure =====
+    // A drop in EDM follows this pattern:
+    // 1. BUILD-UP: brightness/centroid rises, energy rises, snare rolls
+    // 2. BASS VACUUM: bass drops out while highs stay high
+    // 3. PRE-DROP SILENCE: brief energy dip (0.1-0.5s)
+    // 4. THE DROP: massive bass spike, centroid drops, energy explodes
+
     this._dropCooldown = Math.max(0, this._dropCooldown - dt);
     this.dropTimer = Math.max(0, this.dropTimer - dt);
 
-    // Track energy slope over last ~1 second
-    const energySlope = this.totalEnergy - this._prevTotalEnergy;
-    this._recentEnergySlope = lerp(this._recentEnergySlope, energySlope, 0.1);
-    this._prevTotalEnergy = lerp(this._prevTotalEnergy, this.totalEnergy, 0.03);
+    // Sample history at ~20fps
+    this._histIdx60++;
+    const hi = this._histIdx60 % 60;
+    this._centroidHistory[hi] = this.brightness;
+    this._bassHistory60[hi] = this.bass;
+    this._energyHistory60[hi] = this.totalEnergy;
 
-    // Build-up detection: energy rising OR brightness rising OR flux increasing
-    const isRising = this._recentEnergySlope > 0.1 || (this.brightness > 0.3 && energySlope > 0);
-    const isHighEnergy = this.totalEnergy > avgEnergy * 0.6;
+    // Compute trends over last ~2 seconds (40 samples)
+    const lookback = 40;
+    let centroidTrend = 0;  // positive = getting brighter
+    let bassTrend = 0;      // negative = bass dropping out
+    let energyTrend = 0;    // positive = getting louder
+    let recentBassAvg = 0;
+    let oldBassAvg = 0;
 
-    if (isRising && isHighEnergy) {
-      this._energyRiseCounter += dt * 1.5;
-    } else {
-      this._energyRiseCounter *= 0.92;
+    for (let k = 0; k < lookback; k++) {
+      const idx = ((this._histIdx60 - k) % 60 + 60) % 60;
+      const oldIdx = ((this._histIdx60 - lookback + k) % 60 + 60) % 60;
+
+      if (k < lookback / 2) {
+        recentBassAvg += this._bassHistory60[idx];
+      } else {
+        oldBassAvg += this._bassHistory60[idx];
+      }
+    }
+    recentBassAvg /= (lookback / 2);
+    oldBassAvg /= (lookback / 2);
+
+    // Centroid trend: compare recent vs old brightness
+    let recentBright = 0, oldBright = 0;
+    for (let k = 0; k < 15; k++) {
+      const rIdx = ((this._histIdx60 - k) % 60 + 60) % 60;
+      const oIdx = ((this._histIdx60 - 30 - k) % 60 + 60) % 60;
+      recentBright += this._centroidHistory[rIdx];
+      oldBright += this._centroidHistory[oIdx];
+    }
+    recentBright /= 15;
+    oldBright /= 15;
+    centroidTrend = recentBright - oldBright; // positive = brighter
+
+    // Bass vacuum: bass is significantly lower than it was
+    const bassDropRatio = oldBassAvg > 10 ? recentBassAvg / oldBassAvg : 1;
+    this._bassVacuum = bassDropRatio < 0.5 && this.brightness > 0.3;
+
+    // Pre-silence: sudden energy dip
+    this._preSilence = this.totalEnergy < this._prevTotalEnergy * 0.6 && this._prevTotalEnergy > 40;
+
+    // BUILD-UP SCORE: combines all signals
+    let buildup = 0;
+
+    // Signal 1: Brightness rising (risers, hi-hats, snare rolls)
+    if (centroidTrend > 0.02) buildup += centroidTrend * 8;
+
+    // Signal 2: Bass vacuum (bass drops out during build-up)
+    if (this._bassVacuum) buildup += 0.3;
+
+    // Signal 3: Overall energy still present (not just silence)
+    if (this.totalEnergy > 40 && this.highPercent > 0.3) buildup += 0.15;
+
+    // Signal 4: High spectral flux (lots of change = build-up texture)
+    if (this.spectralFlux > 6) buildup += this.spectralFlux * 0.02;
+
+    this._buildupScore = lerp(this._buildupScore, buildup, 0.08);
+
+    // Charge = buildup score, but only if we're not in cooldown
+    if (this._dropCooldown <= 0) {
+      this.dropCharge = clamp(this._buildupScore, 0, 1);
     }
 
-    // Charge builds during build-up
-    if (this._energyRiseCounter > 0.3 && this._dropCooldown <= 0) {
-      this.dropCharge = clamp(this._energyRiseCounter / 2, 0, 1);
+    // Decay charge when buildup signals fade
+    if (buildup < 0.1) {
+      this.dropCharge *= 0.96;
     }
 
-    // Detect the drop: bass spike after charge
+    // === DROP TRIGGER ===
+    // The drop happens when: bass suddenly SPIKES after a bass vacuum/buildup
+    const bassSpike = bassDelta > 12 && this.bass > avgBass * 1.2;
+    const bigBassReturn = this._bassVacuum && bassDelta > 8 && this.bass > 60;
+    const postSilenceBoom = this._preSilence && this.totalEnergy > 60;
+
     const dropTriggered =
-      this.dropCharge > 0.15 &&
-      ((bassDelta > 15 && this.bass > 100) ||
-       (this.spectralFlux > 12 && bassDelta > 8) ||
-       (bassDelta > 25));
+      this._dropCooldown <= 0 &&
+      this.dropCharge > 0.08 &&
+      (bassSpike || bigBassReturn || postSilenceBoom);
 
-    if (dropTriggered && this._dropCooldown <= 0) {
+    if (dropTriggered) {
       this.isDropping = true;
-      this.dropTimer = 1.5; // show DROP for 1.5s
+      this.dropTimer = 1.8;
       this.dropCharge = 0;
-      this._energyRiseCounter = 0;
-      this._dropCooldown = 2.5; // shorter cooldown
+      this._buildupScore = 0;
+      this._dropCooldown = 3;
     } else {
       this.isDropping = this.dropTimer > 0;
     }
 
-    // Decay charge
-    if (energySlope < -0.5) {
-      this.dropCharge *= 0.93;
-    }
+    this._prevTotalEnergy = this.totalEnergy;
 
     // ===== EMOTION =====
     this._emotionTimer += dt;
