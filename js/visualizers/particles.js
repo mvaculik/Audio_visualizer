@@ -504,7 +504,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     ctx.arc(cx, cy, swR, 0, Math.PI * 2);
     ctx.stroke();
   }
-
+}
 
 export function destroy() {
   particles = [];
