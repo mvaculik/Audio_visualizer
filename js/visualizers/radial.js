@@ -198,37 +198,37 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   ctx.restore();
 
-  // ===== RADIAL BARS — symmetric 360°, BOTH halves show full spectrum =====
+  // ===== RADIAL BARS — symmetric 360°, rotating, full circle =====
   const radsPerBar = (Math.PI * 2) / BARS;
   const halfBars = Math.floor(BARS / 2);
   const barStartR = 6;
 
-  // Each HALF of the circle shows the complete frequency spectrum (bass→high)
-  // Right half (0°→180°) and left half (180°→360°) are exact mirrors
+  // Build values: each bar maps directly to a frequency bin
+  // Use the SAME value array for both halves so it's perfectly symmetric
   const barValues = new Float32Array(BARS);
   for (let i = 0; i < halfBars; i++) {
     const t = i / halfBars;
     const logT = Math.pow(t, 0.6);
-    const freqIdx = Math.floor(logT * (freqData.length - 1));
-    const val = freqData[clamp(freqIdx, 0, freqData.length - 1)];
-
-    // Right half: bar 0 (0°) → bar 109 (just before 180°) = bass → high
+    const freqIdx = clamp(Math.floor(logT * (freqData.length - 1)), 0, freqData.length - 1);
+    const val = freqData[freqIdx];
     barValues[i] = val;
-    // Left half: bar 219 (just after 0°/360°) → bar 110 (180°) = bass → high (mirror)
-    barValues[halfBars + (halfBars - 1 - i)] = val;
+  }
+  // Mirror: copy first half into second half in reverse
+  for (let i = 0; i < halfBars; i++) {
+    barValues[halfBars + i] = barValues[halfBars - 1 - i];
   }
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
   for (let i = 0; i < BARS; i++) {
-    const value = Math.max(barValues[i], 12); // minimum visible bar
+    const value = Math.max(barValues[i], 20); // minimum visible — always show bars
 
     const maxBarH = minDim * 0.38;
-    const barHeight = map(value, 0, 255, 8, maxBarH);
-    const barWidth = Math.max(1.3, map(value, 0, 255, 1.2, 4.5));
+    const barHeight = map(value, 0, 255, 15, maxBarH);
+    const barWidth = Math.max(1.5, map(value, 0, 255, 1.3, 4.5));
 
-    const angle = radsPerBar * i; // NO rotation — keeps symmetry perfect
+    const angle = radsPerBar * i + beatAccum; // ROTATE with music
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
 
