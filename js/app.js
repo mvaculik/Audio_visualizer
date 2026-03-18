@@ -61,6 +61,7 @@ class App {
       fileInput: document.getElementById('file-input'),
       timeCurrent: document.getElementById('time-current'),
       toast: document.getElementById('toast'),
+      adOverlay: document.getElementById('ad-overlay'),
     };
   }
 
@@ -498,13 +499,23 @@ class App {
   _renderLoop() {
     let freqData, timeData;
 
+    // Ad detection for YouTube (throttled — IFrame API is slow)
+    const now2 = performance.now();
+    if (!this._lastAdCheck || now2 - this._lastAdCheck > 2000) {
+      this._lastAdCheck = now2;
+      if (this.activeSource === 'youtube' && this.ytReady) {
+        this.ytPlayer._checkAdState();
+        this.els.adOverlay.classList.toggle('visible', this.ytPlayer.isAdPlaying);
+      } else {
+        this.els.adOverlay.classList.remove('visible');
+      }
+    }
+
     if (this.activeSource === 'youtube') {
-      // Prefer mic capture (real audio) over simulation
       if (this.audioEngine.isMicActive) {
         freqData = this.audioEngine.getMicFrequencyData();
         timeData = this.audioEngine.getMicTimeDomainData();
       }
-      // Fallback to simulation only if mic not active
       if (!freqData) {
         this.simulation.update(1 / 60);
         freqData = this.simulation.getFrequencyData();

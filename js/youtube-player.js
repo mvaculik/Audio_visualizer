@@ -33,6 +33,7 @@ export class YouTubePlayer {
         disablekb: 1,
         modestbranding: 1,
         rel: 0,
+        iv_load_policy: 3, // disable annotations
         origin: window.location.origin,
       },
       events: {
@@ -42,6 +43,8 @@ export class YouTubePlayer {
         },
         onStateChange: (e) => {
           if (this._onStateChangeCb) this._onStateChangeCb(this._mapState(e.data));
+          // Detect ad state
+          this._checkAdState();
         },
       },
     });
@@ -55,6 +58,23 @@ export class YouTubePlayer {
       case YT.PlayerState.ENDED: return 'ended';
       default: return 'paused';
     }
+  }
+
+  _checkAdState() {
+    if (!this.player) return;
+    try {
+      // YouTube API: getVideoUrl() during ads returns different URL or getDuration() is very short
+      const dur = this.player.getDuration();
+      const url = this.player.getVideoUrl() || '';
+      // During ads, duration is often 0 or very short, or state is playing but time doesn't advance
+      this.adPlaying = dur > 0 && dur < 20 && this.player.getPlayerState() === YT.PlayerState.PLAYING;
+    } catch (e) {
+      this.adPlaying = false;
+    }
+  }
+
+  get isAdPlaying() {
+    return this.adPlaying || false;
   }
 
   static extractVideoId(url) {
