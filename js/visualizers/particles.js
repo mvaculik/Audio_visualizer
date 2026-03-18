@@ -15,14 +15,6 @@ let nebulaBlobs = [];
 let hueBase = 0;
 let time = 0;
 
-// DROP FIREWORKS layer
-let dropSparks = [];
-let dropRockets = [];
-let dropDetected = false;
-let centroidHist = new Float32Array(40);
-let bassAvgHist = new Float32Array(40);
-let dHistIdx = 0;
-let dropCooldown = 0;
 
 // Beat state
 let rawBass = 0, rawMid = 0, rawHigh = 0;
@@ -101,12 +93,6 @@ export function init(canvas, ctx) {
   chaosTimer = 0;
   chaosBurst = 0;
   prevFormation = 0;
-  dropSparks = [];
-  dropRockets = [];
-  centroidHist.fill(0);
-  bassAvgHist.fill(0);
-  dHistIdx = 0;
-  dropCooldown = 0;
 }
 
 export function render(freqData, timeData, dt, w, h, ctx) {
@@ -519,159 +505,8 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     ctx.stroke();
   }
 
-  // ===== DROP FIREWORKS — only on drops =====
-  dropCooldown = Math.max(0, dropCooldown - dt);
-
-  // Drop detection (brightness rising + bass vacuum + bass return)
-  let wSum = 0, tMag = 0;
-  for (let i = 0; i < freqData.length; i++) { wSum += i * freqData[i]; tMag += freqData[i]; }
-  const brightness = tMag > 0 ? (wSum / tMag / freqData.length) * 2.5 : 0;
-
-  const dhi = dHistIdx % 40;
-  centroidHist[dhi] = brightness;
-  bassAvgHist[dhi] = rawBass;
-  dHistIdx++;
-
-  let recentBright = 0, oldBright = 0, recentBassA = 0, oldBassA = 0;
-  for (let k = 0; k < 12; k++) {
-    recentBright += centroidHist[((dHistIdx - k) % 40 + 40) % 40];
-    oldBright += centroidHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
-    recentBassA += bassAvgHist[((dHistIdx - k) % 40 + 40) % 40];
-    oldBassA += bassAvgHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
-  }
-  recentBright /= 12; oldBright /= 12;
-  recentBassA /= 12; oldBassA /= 12;
-
-  const centroidRising = recentBright - oldBright > 0.015;
-  const bassVacuum = oldBassA > 10 && recentBassA / oldBassA < 0.55;
-  const bassReturn = bassDelta > 10 && rawBass > avgBass * 1.15;
-
-  dropDetected = dropCooldown <= 0 && (centroidRising || bassVacuum) && bassReturn;
-
-  // On drop: launch fireworks rockets
-  if (dropDetected) {
-    dropCooldown = 3;
-    flashAlpha = Math.max(flashAlpha, 0.3);
-
-    // Launch 5-8 rockets from bottom
-    const numRockets = 5 + Math.floor(Math.random() * 4);
-    for (let r = 0; r < numRockets; r++) {
-      const sx = w * 0.1 + Math.random() * w * 0.8;
-      const ty = h * 0.1 + Math.random() * h * 0.3;
-      const dx = (w * 0.15 + Math.random() * w * 0.7) - sx;
-      const dy = ty - (h + 5);
-      const d = Math.hypot(dx, dy);
-      const spd = 400 + Math.random() * 200;
-      dropRockets.push({
-        x: sx, y: h + 5,
-        vx: (dx / d) * spd, vy: (dy / d) * spd,
-        targetY: ty,
-        hue: (hueBase + r * 45) % 360,
-        trail: [],
-        sparkCount: 50 + Math.floor(Math.random() * 50),
-        burstType: Math.floor(Math.random() * 4),
-      });
-    }
-  }
-
-  // Update & render drop rockets
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-
-  for (let i = dropRockets.length - 1; i >= 0; i--) {
-    const r = dropRockets[i];
-    r.x += r.vx * dt;
-    r.y += r.vy * dt;
-    r.vy += 20 * dt;
-
-    r.trail.push({ x: r.x, y: r.y });
-    while (r.trail.length > 10) r.trail.shift();
-
-    for (let t = 1; t < r.trail.length; t++) {
-      const ratio = t / r.trail.length;
-      ctx.strokeStyle = hslString(r.hue, 0.8, 0.8, ratio * 0.5);
-      ctx.lineWidth = ratio * 2.5;
-      ctx.beginPath();
-      ctx.moveTo(r.trail[t-1].x, r.trail[t-1].y);
-      ctx.lineTo(r.trail[t].x, r.trail[t].y);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = hslString(r.hue, 0.5, 0.95, 0.9);
-    ctx.beginPath();
-    ctx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Burst at target
-    if (r.y <= r.targetY) {
-      const baseSpd = 100 + Math.random() * 80;
-      for (let s = 0; s < r.sparkCount; s++) {
-        const angle = (Math.PI * 2 * s) / r.sparkCount + Math.random() * 0.1;
-        const spd = baseSpd * (0.5 + Math.random() * 0.8);
-        const grav = [35, 20, 55, 30][r.burstType];
-        const drag = [0.97, 0.98, 0.96, 0.975][r.burstType];
-        const life = [1.8, 1.2, 2.5, 1.5][r.burstType] + Math.random();
-        dropSparks.push({
-          x: r.x, y: r.y,
-          vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
-          life, maxLife: life,
-          size: 1.5 + Math.random() * 2,
-          hue: r.hue + Math.random() * 30,
-          gravity: grav, drag,
-          trail: [],
-        });
-      }
-      dropRockets.splice(i, 1);
-      flashAlpha = Math.max(flashAlpha, 0.1);
-    }
-  }
-
-  // Update & render drop sparks
-  for (let i = dropSparks.length - 1; i >= 0; i--) {
-    const s = dropSparks[i];
-    s.vx *= s.drag;
-    s.vy *= s.drag;
-    s.vy += s.gravity * dt;
-    s.x += s.vx * dt;
-    s.y += s.vy * dt;
-    s.life -= dt;
-    if (s.life <= 0) { dropSparks.splice(i, 1); continue; }
-
-    const lr = clamp(s.life / s.maxLife, 0, 1);
-    const a = lr * lr;
-
-    s.trail.push({ x: s.x, y: s.y });
-    while (s.trail.length > 5) s.trail.shift();
-
-    for (let t = 1; t < s.trail.length; t++) {
-      const tR = t / s.trail.length;
-      ctx.strokeStyle = hslString(s.hue, 0.8, 0.6, tR * a * 0.2);
-      ctx.lineWidth = tR * s.size * 0.5;
-      ctx.beginPath();
-      ctx.moveTo(s.trail[t-1].x, s.trail[t-1].y);
-      ctx.lineTo(s.trail[t].x, s.trail[t].y);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = hslString(s.hue, 0.9, 0.6, a * 0.1);
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size + 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = hslString(s.hue, 0.6, 0.5 + lr * 0.4, a);
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size * lr, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  while (dropSparks.length > 1200) dropSparks.shift();
-
-  ctx.restore();
-}
 
 export function destroy() {
   particles = [];
   nebulaBlobs = [];
-  dropSparks = [];
-  dropRockets = [];
 }
