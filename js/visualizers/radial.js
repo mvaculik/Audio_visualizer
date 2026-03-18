@@ -24,13 +24,9 @@ let energyHistory = new Float32Array(8);
 let energyIdx = 0;
 let beatPower = 0;
 
-// Sacred geometry portal
-let portalPhase = 0;      // morphs between shapes
+// Center light
 let portalGlitch = 0;
 let portalPulse = 0;
-let innerEyeOpen = 0;     // 0=closed, 1=open
-let lightningBolts = [];
-let portalRings = [];      // concentric rotating rings
 
 export function init(canvas, ctx) {
   orbitParticles = [];
@@ -52,21 +48,8 @@ export function init(canvas, ctx) {
   flashAlpha = 0;
   energyHistory.fill(0);
   beatPower = 0;
-  portalPhase = 0;
   portalGlitch = 0;
   portalPulse = 0;
-  innerEyeOpen = 0;
-  lightningBolts = [];
-  portalRings = [];
-  for (let i = 0; i < 5; i++) {
-    portalRings.push({
-      radius: 0.3 + i * 0.15,
-      speed: (0.4 + i * 0.2) * (i % 2 === 0 ? 1 : -1),
-      sides: [6, 8, 3, 12, 5][i],
-      angle: 0,
-      alpha: 0,
-    });
-  }
 }
 
 export function render(freqData, timeData, dt, w, h, ctx) {
@@ -201,9 +184,10 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   ctx.restore();
 
-  // ===== RADIAL BARS — full circle, mirrored, no gaps =====
+  // ===== RADIAL BARS — from center outward, symmetric, full 360° =====
   const radsPerBar = (Math.PI * 2) / BARS;
   const halfBars = Math.floor(BARS / 2);
+  const barStartR = 8; // bars start very close to center (fade zone)
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -214,50 +198,54 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     const freqIndex = Math.floor(map(mirrorIdx, 0, halfBars, 0, freqData.length - 1));
     const rawValue = freqData[clamp(freqIndex, 0, freqData.length - 1)];
 
-    // Always draw — minimum tiny bar so circle is always full
-    const value = Math.max(rawValue, 8);
+    const value = Math.max(rawValue, 5);
 
-    const maxBarH = minDim * 0.35;
-    const barHeight = map(value, 0, 255, 2, maxBarH);
-    const barWidth = Math.max(1.5, map(value, 0, 255, 1.2, 4.5));
+    const maxBarH = minDim * 0.38;
+    const barHeight = map(value, 0, 255, 4, maxBarH);
+    const barWidth = Math.max(1.2, map(value, 0, 255, 1, 4));
 
     const angle = radsPerBar * i + beatAccum;
-    const x1 = cx + Math.cos(angle) * (smoothRadius + 5);
-    const y1 = cy + Math.sin(angle) * (smoothRadius + 5);
-    const x2 = cx + Math.cos(angle) * (smoothRadius + 5 + barHeight);
-    const y2 = cy + Math.sin(angle) * (smoothRadius + 5 + barHeight);
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
 
-    // Color: bass bars = hot (red/orange), mid = accent, high = cool (cyan/blue)
+    // Bar starts near center, ends far out
+    const x1 = cx + cosA * barStartR;
+    const y1 = cy + sinA * barStartR;
+    const x2 = cx + cosA * (barStartR + barHeight);
+    const y2 = cy + sinA * (barStartR + barHeight);
+
+    // Color: symmetric gradient around circle
     const ratio = freqIndex / freqData.length;
     let barHue;
     if (ratio < 0.15) {
-      barHue = map(value, 0, 255, 10, 40); // red → orange, HOTTER when louder
+      barHue = map(value, 0, 255, 10, 40);
     } else if (ratio < 0.5) {
-      barHue = (hueOffset + i * 0.8) % 360; // cycling accent
+      barHue = (hueOffset + i * 0.8) % 360;
     } else {
-      barHue = map(ratio, 0.5, 1, 180, 260); // cyan → blue
+      barHue = map(ratio, 0.5, 1, 180, 260);
     }
 
-    const alpha = map(value, 0, 255, 0.15, 1.0);
+    // Alpha fades near center (inner part dimmer, outer brighter)
+    const alpha = map(value, 0, 255, 0.1, 0.95);
     const lightness = map(value, 0, 255, 0.35, 0.75);
 
-    // Outer glow (wide, soft)
-    ctx.strokeStyle = hslString(barHue, 0.95, lightness, alpha * 0.2);
-    ctx.lineWidth = barWidth + 8;
+    // Outer glow
+    ctx.strokeStyle = hslString(barHue, 0.95, lightness, alpha * 0.15);
+    ctx.lineWidth = barWidth + 7;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
     // Mid glow
-    ctx.strokeStyle = hslString(barHue, 0.9, lightness, alpha * 0.5);
+    ctx.strokeStyle = hslString(barHue, 0.9, lightness, alpha * 0.4);
     ctx.lineWidth = barWidth + 3;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Core bar (bright)
+    // Core bar
     ctx.strokeStyle = hslString(barHue, 0.85, lightness + 0.15, alpha);
     ctx.lineWidth = barWidth;
     ctx.beginPath();
@@ -265,9 +253,9 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Hot tip spark on loud bars
-    if (value > 180) {
-      const sparkSize = map(value, 180, 255, 1, 5);
+    // Hot tip spark
+    if (value > 170) {
+      const sparkSize = map(value, 170, 255, 1, 5);
       ctx.fillStyle = hslString(barHue, 0.5, 0.9, alpha * 0.8);
       ctx.beginPath();
       ctx.arc(x2, y2, sparkSize, 0, Math.PI * 2);
@@ -277,213 +265,80 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== CENTER — SACRED GEOMETRY PORTAL =====
+  // ===== CENTER — PURE LIGHT with drop-reactive glow =====
   const centerHue = hueOffset % 360;
+  portalPulse = lerp(portalPulse, map(rawBass, 0, 255, 0, 1), 0.4);
 
-  portalPhase += dt * 0.15;
-  portalPulse = lerp(portalPulse, map(rawBass, 0, 255, 0, 1), 0.35);
-  innerEyeOpen = lerp(innerEyeOpen, map(rawBass, 0, 255, 0.2, 1), 0.2);
-
-  // Glitch on beats
-  if (isHardBeat) portalGlitch = 0.8 + Math.random() * 0.2;
-  else if (isBeat) portalGlitch = Math.max(portalGlitch, 0.3);
+  // Drop flash tracker
+  if (isHardBeat) portalGlitch = 1;
+  else if (isBeat) portalGlitch = Math.max(portalGlitch, 0.4);
   portalGlitch *= 0.88;
 
-  // Lightning bolts on hard beats
-  if (isHardBeat) {
-    const numBolts = 2 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < numBolts; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const segments = [];
-      let bx = 0, by = 0;
-      const segCount = 5 + Math.floor(Math.random() * 6);
-      for (let s = 0; s < segCount; s++) {
-        const len = 8 + Math.random() * 20;
-        bx += Math.cos(angle + (Math.random() - 0.5) * 1.5) * len;
-        by += Math.sin(angle + (Math.random() - 0.5) * 1.5) * len;
-        segments.push({ x: bx, y: by });
-      }
-      lightningBolts.push({ segments, alpha: 1, hue: centerHue + Math.random() * 40 });
-    }
-  }
+  const lightR = smoothRadius + portalPulse * 20 + beatPower * 30;
 
-  const portalR = smoothRadius * 0.9;
-
-  // === DEEP PORTAL GLOW (abyss) ===
-  const abyssR = portalR + portalPulse * 25;
-  const abyssGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, abyssR + 30);
-  abyssGrad.addColorStop(0, hslString(centerHue, 0.9, 0.08, 0.95));
-  abyssGrad.addColorStop(0.3, hslString(centerHue, 0.7, 0.04, 0.8));
-  abyssGrad.addColorStop(0.6, hslString((centerHue + 180) % 360, 0.8, 0.15, 0.3 + portalPulse * 0.3));
-  abyssGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = abyssGrad;
+  // Layer 1: Wide soft glow (fades from center outward into bars)
+  const wideR = lightR + minDim * 0.12;
+  const wideGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, wideR);
+  wideGrad.addColorStop(0, hslString(centerHue, 0.7, 0.5, 0.25 + portalPulse * 0.2));
+  wideGrad.addColorStop(0.3, hslString(centerHue, 0.6, 0.3, 0.12 + portalPulse * 0.1));
+  wideGrad.addColorStop(0.7, hslString((centerHue + 30) % 360, 0.4, 0.15, 0.04));
+  wideGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = wideGrad;
   ctx.beginPath();
-  ctx.arc(cx, cy, abyssR + 30, 0, Math.PI * 2);
+  ctx.arc(cx, cy, wideR, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  // === ROTATING GEOMETRIC RINGS ===
-  for (let ri = 0; ri < portalRings.length; ri++) {
-    const ring = portalRings[ri];
-    ring.angle += ring.speed * dt * (1 + portalPulse * 2);
-    ring.alpha = lerp(ring.alpha, 0.15 + portalPulse * 0.4 + (ri === 0 ? beatPower * 0.3 : 0), 0.1);
-
-    const rr = portalR * ring.radius * (1 + portalPulse * 0.15);
-    const sides = ring.sides;
-    const glitchOff = portalGlitch > 0.1 ? (Math.random() - 0.5) * portalGlitch * 8 : 0;
-
-    const ringHue = (centerHue + ri * 35) % 360;
-
-    // Draw polygon
-    ctx.strokeStyle = hslString(ringHue, 0.8, 0.6, ring.alpha);
-    ctx.lineWidth = 1 + portalPulse * 1.5;
-    ctx.beginPath();
-    for (let s = 0; s <= sides; s++) {
-      const a = ring.angle + (Math.PI * 2 * s) / sides;
-      const px = cx + Math.cos(a) * rr + glitchOff;
-      const py = cy + Math.sin(a) * rr;
-      if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.stroke();
-
-    // Inner connecting lines (sacred geometry feel)
-    if (sides >= 5 && ring.alpha > 0.08) {
-      ctx.strokeStyle = hslString(ringHue, 0.6, 0.5, ring.alpha * 0.3);
-      ctx.lineWidth = 0.5;
-      for (let s = 0; s < sides; s++) {
-        const a1 = ring.angle + (Math.PI * 2 * s) / sides;
-        const skip = Math.floor(sides / 2);
-        const a2 = ring.angle + (Math.PI * 2 * ((s + skip) % sides)) / sides;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr);
-        ctx.lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr);
-        ctx.stroke();
-      }
-    }
-
-    // Vertex dots
-    for (let s = 0; s < sides; s++) {
-      const a = ring.angle + (Math.PI * 2 * s) / sides;
-      const vx = cx + Math.cos(a) * rr + glitchOff;
-      const vy = cy + Math.sin(a) * rr;
-      ctx.fillStyle = hslString(ringHue, 0.7, 0.8, ring.alpha * 1.5);
-      ctx.beginPath();
-      ctx.arc(vx, vy, 1.5 + portalPulse * 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // === INNER EYE — ellipse that opens/closes with bass ===
-  const eyeW = portalR * 0.5 * innerEyeOpen;
-  const eyeH = portalR * 0.2 * innerEyeOpen;
-  if (eyeW > 2) {
-    // Outer eye glow
-    const eyeGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, eyeW);
-    eyeGrad.addColorStop(0, hslString((centerHue + 180) % 360, 0.9, 0.8, 0.5 * innerEyeOpen));
-    eyeGrad.addColorStop(0.5, hslString(centerHue, 0.8, 0.5, 0.2 * innerEyeOpen));
-    eyeGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = eyeGrad;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, eyeW * 1.3, eyeH * 1.8, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye shape (almond)
-    ctx.strokeStyle = hslString((centerHue + 180) % 360, 0.9, 0.7, 0.4 + portalPulse * 0.4);
-    ctx.lineWidth = 1.5 + beatPower * 2;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, eyeW, eyeH, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Iris
-    const irisR = Math.min(eyeW, eyeH) * 0.6;
-    if (irisR > 1) {
-      const irisGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, irisR);
-      irisGrad.addColorStop(0, hslString((centerHue + 180) % 360, 0.9, 0.9, 0.9));
-      irisGrad.addColorStop(0.3, hslString((centerHue + 180) % 360, 0.8, 0.5, 0.6));
-      irisGrad.addColorStop(0.7, hslString(centerHue, 0.7, 0.3, 0.3));
-      irisGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = irisGrad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, irisR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Pupil
-      ctx.fillStyle = `rgba(0,0,0,${0.8 * innerEyeOpen})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, irisR * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // === FLOWER OF LIFE pattern (subtle, rotating) ===
-  const flowerR = portalR * 0.35;
-  const flowerAlpha = 0.04 + portalPulse * 0.08;
-  ctx.strokeStyle = hslString(centerHue, 0.5, 0.6, flowerAlpha);
-  ctx.lineWidth = 0.5;
-  const flowerAngle = hueOffset * 0.003;
-  for (let i = 0; i < 6; i++) {
-    const a = flowerAngle + (Math.PI * 2 * i) / 6;
-    const fx = cx + Math.cos(a) * flowerR;
-    const fy = cy + Math.sin(a) * flowerR;
-    ctx.beginPath();
-    ctx.arc(fx, fy, flowerR, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // Center circle
+  // Layer 2: Core bright light
+  const coreR = lightR * 0.5;
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+  const coreAlpha = 0.4 + portalPulse * 0.4 + beatPower * 0.2;
+  coreGrad.addColorStop(0, hslString(centerHue, 0.5, 0.95, coreAlpha));
+  coreGrad.addColorStop(0.2, hslString(centerHue, 0.7, 0.7, coreAlpha * 0.7));
+  coreGrad.addColorStop(0.5, hslString(centerHue, 0.8, 0.4, coreAlpha * 0.25));
+  coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = coreGrad;
   ctx.beginPath();
-  ctx.arc(cx, cy, flowerR, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+  ctx.fill();
 
-  // === LIGHTNING BOLTS ===
-  for (let li = lightningBolts.length - 1; li >= 0; li--) {
-    const bolt = lightningBolts[li];
-    bolt.alpha *= 0.85;
-    if (bolt.alpha < 0.02) { lightningBolts.splice(li, 1); continue; }
+  // Layer 3: Mid glow ring (second hue — creates depth)
+  const midR = lightR * 0.8;
+  const midGrad = ctx.createRadialGradient(cx, cy, midR * 0.3, cx, cy, midR);
+  const midHue = (centerHue + 60) % 360;
+  midGrad.addColorStop(0, hslString(midHue, 0.8, 0.6, 0.15 + beatPower * 0.25));
+  midGrad.addColorStop(0.5, hslString(midHue, 0.6, 0.4, 0.06));
+  midGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = midGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, midR, 0, Math.PI * 2);
+  ctx.fill();
 
-    ctx.strokeStyle = hslString(bolt.hue, 0.8, 0.8, bolt.alpha);
-    ctx.lineWidth = 1 + bolt.alpha * 3;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    for (const seg of bolt.segments) {
-      ctx.lineTo(cx + seg.x, cy + seg.y);
-    }
-    ctx.stroke();
-
-    // Glow pass
-    ctx.strokeStyle = hslString(bolt.hue, 0.6, 0.6, bolt.alpha * 0.3);
-    ctx.lineWidth = 4 + bolt.alpha * 6;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    for (const seg of bolt.segments) {
-      ctx.lineTo(cx + seg.x, cy + seg.y);
-    }
-    ctx.stroke();
-  }
-
-  // === GLITCH DISTORTION BARS ===
+  // Layer 4: Beat flash (white-hot center on drops)
   if (portalGlitch > 0.1) {
-    const numBars = Math.floor(portalGlitch * 8);
-    for (let i = 0; i < numBars; i++) {
-      const barY = cy - portalR + Math.random() * portalR * 2;
-      const barW = portalR * (0.5 + Math.random());
-      const barH = 1 + Math.random() * 3;
-      ctx.fillStyle = hslString((centerHue + Math.random() * 90) % 360, 0.9, 0.7, portalGlitch * 0.2);
-      ctx.fillRect(cx - barW / 2 + (Math.random() - 0.5) * 15, barY, barW, barH);
-    }
+    const flashR = lightR * (0.3 + portalGlitch * 0.5);
+    const flashGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, flashR);
+    flashGrad.addColorStop(0, `rgba(255,255,255,${portalGlitch * 0.5})`);
+    flashGrad.addColorStop(0.3, hslString(centerHue, 0.5, 0.9, portalGlitch * 0.25));
+    flashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = flashGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, flashR, 0, Math.PI * 2);
+    ctx.fill();
   }
+
+  // Layer 5: Subtle pulsing ring at bar boundary
+  const ringR = smoothRadius + 3;
+  const ringAlpha = 0.06 + portalPulse * 0.15;
+  ctx.strokeStyle = hslString(centerHue, 0.7, 0.7, ringAlpha);
+  ctx.lineWidth = 1 + portalPulse * 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.stroke();
 
   ctx.restore();
-
-  // === OUTER PORTAL RING ===
-  const outerAlpha = 0.12 + portalPulse * 0.3 + beatPower * 0.3;
-  ctx.strokeStyle = hslString(centerHue, 0.9, 0.6, outerAlpha);
-  ctx.lineWidth = 1.5 + beatPower * 3;
-  ctx.beginPath();
-  ctx.arc(cx, cy, portalR + 5, 0, Math.PI * 2);
-  ctx.stroke();
 
   // ===== ORBIT PARTICLES — with trails =====
   ctx.save();
