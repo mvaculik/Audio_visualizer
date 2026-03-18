@@ -1,355 +1,651 @@
-// js/visualizers/particles.js — FIREWORKS CYCLE:
-// rockets → burst → sparks form patterns to rhythm → fade before drop → DROP explosion
+// js/visualizers/particles.js — NEBULA: never settling, always morphing
 
-import { lerp, map, clamp, hslString, perlin, perlinOctaves } from '../utils.js';
+import { lerp, map, clamp, hslString, distance, perlin, perlinOctaves } from '../utils.js';
 
-const MAX_SPARKS = 1800;
-const MOBILE_SPARKS = 700;
-const MAX_ROCKETS = 15;
+const MAX_P = 700;
+const MOBILE_P = 250;
+const TRAIL_LEN = 12;
+const NEBULA_BLOBS = 8;
 
-let rockets = [];
-let sparks = [];    // active sparks (from bursts, then morph into pattern)
+// How many formations we cycle through
+const NUM_FORMATIONS = 6;
+
+let particles = [];
+let nebulaBlobs = [];
 let hueBase = 0;
 let time = 0;
-let maxSparks = MAX_SPARKS;
 
-// Beat
+// DROP FIREWORKS layer
+let dropSparks = [];
+let dropRockets = [];
+let dropDetected = false;
+let centroidHist = new Float32Array(40);
+let bassAvgHist = new Float32Array(40);
+let dHistIdx = 0;
+let dropCooldown = 0;
+
+// Beat state
 let rawBass = 0, rawMid = 0, rawHigh = 0;
 let prevBass = 0;
-let bassHistory = new Float32Array(16);
+let bassHistory = new Float32Array(12);
 let bassIdx = 0;
 let beatPower = 0;
+let warpPower = 0;
 let flashAlpha = 0;
+let shakeX = 0, shakeY = 0;
 
-// Drop tracking
-let dropBuildup = 0;     // 0-1, rises before drop
-let dropFadeActive = 0;  // 1 = fading out before drop
-let postDropTime = 0;    // time since last drop burst
-let centroidHistory = new Float32Array(40);
-let bassAvgHistory = new Float32Array(40);
-let histIdx = 0;
+// Formation state — continuously morphing
+let formationPhase = 0;
+let formationTimer = 0;       // time until next formation switch
+let formationDuration = 4;    // seconds per formation
+let formationBlend = 0;       // 0=transitioning, 1=locked in
+let formationAngle = 0;
+let prevFormation = 0;
 
-// Pattern state for sparks
-let patternPhase = 0;
-let patternAngle = 0;
+// Chaos injection — prevents settling
+let chaosTimer = 0;
+let chaosBurst = 0;           // periodic chaos injection
 
-function createRocket(w, h, hue, big) {
-  const startX = w * 0.1 + Math.random() * w * 0.8;
-  const startY = h + 5;
-  const targetX = w * 0.15 + Math.random() * w * 0.7;
-  const targetY = h * (big ? 0.15 : 0.2) + Math.random() * h * 0.25;
-  const dx = targetX - startX;
-  const dy = targetY - startY;
-  const dist = Math.hypot(dx, dy);
-  const speed = big ? 450 + Math.random() * 150 : 300 + Math.random() * 150;
-
+function createParticle(cx, cy, i, total) {
+  const angle = (Math.PI * 2 * i) / total + Math.random() * 0.3;
+  const dist = 30 + Math.random() * 300;
   return {
-    x: startX, y: startY,
-    vx: (dx / dist) * speed,
-    vy: (dy / dist) * speed,
-    targetY, hue: hue + Math.random() * 50,
-    size: big ? 3 : 2,
+    x: cx + Math.cos(angle) * dist,
+    y: cy + Math.sin(angle) * dist,
+    vx: (Math.random() - 0.5) * 3,
+    vy: (Math.random() - 0.5) * 3,
+    size: 1 + Math.random() * 2.5,
+    baseSize: 1 + Math.random() * 2.5,
+    hueOff: (i / total) * 360,
+    alpha: 1,
+    band: i % 3,
     trail: [],
-    sparkCount: big ? 80 + Math.floor(Math.random() * 50) : 30 + Math.floor(Math.random() * 30),
-    burstType: Math.floor(Math.random() * 5),
+    ember: 0,
   };
 }
 
-function burstRocket(rocket) {
-  const { x, y, hue, sparkCount, burstType } = rocket;
-  const baseSpeed = 100 + Math.random() * 80;
-  const newSparks = [];
-
-  for (let i = 0; i < sparkCount; i++) {
-    let angle, spd, life, gravity, drag;
-
-    if (burstType === 0) { // Circle
-      angle = (Math.PI * 2 * i) / sparkCount;
-      spd = baseSpeed * (0.7 + Math.random() * 0.6);
-      life = 2 + Math.random() * 1.5;
-      gravity = 35; drag = 0.97;
-    } else if (burstType === 1) { // Ring
-      angle = (Math.PI * 2 * i) / sparkCount;
-      spd = baseSpeed * (0.95 + Math.random() * 0.1);
-      life = 1.5 + Math.random() * 0.5;
-      gravity = 20; drag = 0.98;
-    } else if (burstType === 2) { // Palm
-      angle = -Math.PI/2 + (Math.random()-0.5) * Math.PI * 0.7;
-      spd = baseSpeed * (0.4 + Math.random());
-      life = 2.5 + Math.random() * 1.5;
-      gravity = 55; drag = 0.96;
-    } else if (burstType === 3) { // Crossette
-      const arm = i % 6;
-      angle = (Math.PI * 2 * arm) / 6 + (Math.random()-0.5)*0.3;
-      spd = baseSpeed * (0.5 + Math.random() * 0.7);
-      life = 1.5 + Math.random();
-      gravity = 30; drag = 0.97;
-    } else { // Willow
-      angle = (Math.PI * 2 * i) / sparkCount;
-      spd = baseSpeed * (0.2 + Math.random() * 0.4);
-      life = 4 + Math.random() * 2;
-      gravity = 18; drag = 0.992;
-    }
-
-    newSparks.push({
-      x, y,
-      vx: Math.cos(angle) * spd,
-      vy: Math.sin(angle) * spd,
-      life, maxLife: life,
-      size: 1.2 + Math.random() * 2,
-      hue: hue + Math.random() * 30 + (burstType === 3 ? i % 6 * 40 : 0),
-      gravity, drag,
-      trail: [],
-      patternForce: 0, // ramps up over time → sparks join pattern
-    });
-  }
-  return newSparks;
+function createNebula(cx, cy) {
+  return {
+    x: cx + (Math.random() - 0.5) * 400,
+    y: cy + (Math.random() - 0.5) * 400,
+    radius: 60 + Math.random() * 120,
+    hueOff: Math.random() * 360,
+    alpha: 0,
+    vx: (Math.random() - 0.5) * 0.5,
+    vy: (Math.random() - 0.5) * 0.5,
+  };
 }
 
 export function init(canvas, ctx) {
-  maxSparks = window.innerWidth < 768 ? MOBILE_SPARKS : MAX_SPARKS;
-  rockets = []; sparks = [];
+  const count = window.innerWidth < 768 ? MOBILE_P : MAX_P;
+  const cx = canvas.width / (window.devicePixelRatio || 1) / 2;
+  const cy = canvas.height / (window.devicePixelRatio || 1) / 2;
+
+  particles = [];
+  for (let i = 0; i < count; i++) {
+    particles.push(createParticle(cx, cy, i, count));
+  }
+
+  nebulaBlobs = [];
+  for (let i = 0; i < NEBULA_BLOBS; i++) {
+    nebulaBlobs.push(createNebula(cx, cy));
+  }
+
   rawBass = 0; rawMid = 0; rawHigh = 0;
-  prevBass = 0; beatPower = 0; flashAlpha = 0;
-  dropBuildup = 0; dropFadeActive = 0; postDropTime = 0;
-  bassHistory.fill(0); centroidHistory.fill(0); bassAvgHistory.fill(0);
-  time = 0; hueBase = 0; patternPhase = 0; patternAngle = 0;
+  prevBass = 0; beatPower = 0; warpPower = 0;
+  flashAlpha = 0; time = 0;
+  bassHistory.fill(0);
+  formationPhase = 0;
+  formationTimer = 0;
+  formationBlend = 0;
+  chaosTimer = 0;
+  chaosBurst = 0;
+  prevFormation = 0;
+  dropSparks = [];
+  dropRockets = [];
+  centroidHist.fill(0);
+  bassAvgHist.fill(0);
+  dHistIdx = 0;
+  dropCooldown = 0;
 }
 
 export function render(freqData, timeData, dt, w, h, ctx) {
   if (!ctx) return;
 
   time += dt;
-  hueBase += dt * 12;
-  const cx = w / 2;
-  const cy = h / 2;
+  hueBase += dt * 18;
+
+  const cx = w / 2 + shakeX;
+  const cy = h / 2 + shakeY;
   const minDim = Math.min(w, h);
 
   // ===== AUDIO =====
-  const len = freqData.length;
-  const bassEnd = Math.floor(len * 0.1);
-  const midEnd = Math.floor(len * 0.45);
-  let bSum = 0, mSum = 0, hSum = 0, wSum = 0, tMag = 0;
-  for (let i = 0; i < len; i++) {
+  const bassEnd = Math.floor(freqData.length * 0.1);
+  const midEnd = Math.floor(freqData.length * 0.45);
+  let bSum = 0, mSum = 0, hSum = 0;
+
+  for (let i = 0; i < freqData.length; i++) {
     if (i < bassEnd) bSum += freqData[i];
     else if (i < midEnd) mSum += freqData[i];
     else hSum += freqData[i];
-    wSum += i * freqData[i];
-    tMag += freqData[i];
   }
+
   rawBass = lerp(rawBass, bSum / bassEnd, 0.5);
   rawMid = lerp(rawMid, mSum / (midEnd - bassEnd), 0.4);
-  rawHigh = lerp(rawHigh, hSum / (len - midEnd), 0.45);
+  rawHigh = lerp(rawHigh, hSum / (freqData.length - midEnd), 0.45);
 
-  const brightness = tMag > 0 ? (wSum / tMag / len) * 2.5 : 0;
-
-  bassHistory[bassIdx % 16] = rawBass;
+  bassHistory[bassIdx % 12] = rawBass;
   bassIdx++;
   let avgBass = 0;
-  for (let i = 0; i < 16; i++) avgBass += bassHistory[i];
-  avgBass /= 16;
+  for (let i = 0; i < 12; i++) avgBass += bassHistory[i];
+  avgBass /= 12;
 
   const bassDelta = rawBass - prevBass;
-  const isBeat = rawBass > avgBass * 1.08 && bassDelta > 5;
-  const isHardBeat = rawBass > avgBass * 1.25 && bassDelta > 18;
+  const isBeat = rawBass > avgBass * 1.12 && bassDelta > 10;
+  const isHardBeat = rawBass > avgBass * 1.3 && bassDelta > 25;
+  const isSupernova = rawBass > avgBass * 1.5 && bassDelta > 45;
   prevBass = lerp(prevBass, rawBass, 0.25);
+
   const energy = clamp((rawBass + rawMid + rawHigh) / 500, 0, 1);
 
-  if (isHardBeat) { beatPower = 1; flashAlpha = Math.max(flashAlpha, 0.15); }
-  else if (isBeat) { beatPower = Math.max(beatPower, 0.4); flashAlpha = Math.max(flashAlpha, 0.03); }
-  beatPower *= 0.88;
-  flashAlpha *= 0.85;
+  // ===== FORMATION AUTO-CYCLING =====
+  // Formations change on timer OR on hard beats — never stays still
+  formationTimer += dt;
+  formationDuration = 3 + Math.random() * 2; // 3-5 seconds per formation
 
-  // ===== DROP DETECTION (simplified from music-intelligence) =====
-  const hi = histIdx % 40;
-  centroidHistory[hi] = brightness;
-  bassAvgHistory[hi] = rawBass;
-  histIdx++;
+  let shouldSwitch = false;
+  if (formationTimer > formationDuration) shouldSwitch = true;
+  if (isSupernova) shouldSwitch = true;
+  if (isHardBeat && formationTimer > 1.5) shouldSwitch = true; // hard beat after 1.5s minimum
 
-  // Compare recent vs old brightness + bass
-  let recentBright = 0, oldBright = 0, recentBassAvg = 0, oldBassAvg = 0;
-  for (let k = 0; k < 15; k++) {
-    recentBright += centroidHistory[((histIdx - k) % 40 + 40) % 40];
-    oldBright += centroidHistory[((histIdx - 25 - k) % 40 + 40) % 40];
-    recentBassAvg += bassAvgHistory[((histIdx - k) % 40 + 40) % 40];
-    oldBassAvg += bassAvgHistory[((histIdx - 25 - k) % 40 + 40) % 40];
-  }
-  recentBright /= 15; oldBright /= 15;
-  recentBassAvg /= 15; oldBassAvg /= 15;
-
-  const centroidRising = recentBright - oldBright > 0.02;
-  const bassVacuum = oldBassAvg > 10 && recentBassAvg / oldBassAvg < 0.5;
-
-  // Buildup score
-  let buildup = 0;
-  if (centroidRising) buildup += 0.4;
-  if (bassVacuum) buildup += 0.3;
-  if (brightness > 0.4 && energy > 0.3) buildup += 0.2;
-  dropBuildup = lerp(dropBuildup, buildup, 0.06);
-
-  // Drop trigger: bass returns after buildup
-  const isDropMoment = dropBuildup > 0.15 && bassDelta > 12 && rawBass > avgBass * 1.2;
-
-  postDropTime += dt;
-
-  // ===== PHASE: FADE before drop =====
-  if (dropBuildup > 0.25) {
-    dropFadeActive = lerp(dropFadeActive, dropBuildup, 0.05);
-  } else {
-    dropFadeActive *= 0.95;
+  if (shouldSwitch) {
+    prevFormation = formationPhase;
+    formationPhase = (formationPhase + 1 + Math.floor(Math.random() * (NUM_FORMATIONS - 1))) % NUM_FORMATIONS;
+    formationTimer = 0;
+    formationBlend = 0;
   }
 
-  // Flash
+  // Formation blend: ramps up fast then holds
+  formationBlend = lerp(formationBlend, 1, 0.04 + energy * 0.03);
+
+  // ===== PERIODIC CHAOS INJECTION — prevents settling =====
+  chaosTimer += dt;
+  if (chaosTimer > 0.8 + Math.random() * 0.5) {
+    chaosTimer = 0;
+    chaosBurst = 0.3 + energy * 0.7; // stronger with more energy
+  }
+  chaosBurst *= 0.92;
+
+  // ===== BEAT REACTIONS =====
+  if (isSupernova) {
+    warpPower = 1.0;
+    beatPower = 1.0;
+    flashAlpha = 0.35;
+    shakeX = (Math.random() - 0.5) * 20;
+    shakeY = (Math.random() - 0.5) * 20;
+  } else if (isHardBeat) {
+    warpPower = Math.max(warpPower, 0.6);
+    beatPower = Math.max(beatPower, 0.7);
+    flashAlpha = Math.max(flashAlpha, 0.12);
+    shakeX = (Math.random() - 0.5) * 10;
+    shakeY = (Math.random() - 0.5) * 10;
+  } else if (isBeat) {
+    beatPower = Math.max(beatPower, 0.4);
+    flashAlpha = Math.max(flashAlpha, 0.04);
+    shakeX += (Math.random() - 0.5) * 3;
+    shakeY += (Math.random() - 0.5) * 3;
+  }
+
+  beatPower *= 0.9;
+  warpPower *= 0.86;
+  flashAlpha *= 0.84;
+  shakeX *= 0.85;
+  shakeY *= 0.85;
+
+  formationAngle += dt * (0.3 + energy * 1.2 + beatPower * 2);
+
+  // ===== FLASH =====
   if (flashAlpha > 0.005) {
     ctx.fillStyle = hslString(hueBase % 360, 0.6, 0.8, flashAlpha);
     ctx.fillRect(0, 0, w, h);
   }
 
-  // ===== LAUNCH ROCKETS on beats (normal phase) =====
-  if (isBeat && dropFadeActive < 0.3 && rockets.length < MAX_ROCKETS) {
-    const num = isHardBeat ? 2 + Math.floor(Math.random() * 2) : 1;
-    for (let r = 0; r < num; r++) {
-      rockets.push(createRocket(w, h, hueBase % 360, isHardBeat));
+  // ===== NEBULA CLOUDS =====
+  for (const nb of nebulaBlobs) {
+    const targetAlpha = map(energy, 0.1, 0.7, 0, 0.15) + beatPower * 0.05;
+    nb.alpha = lerp(nb.alpha, targetAlpha, 0.04);
+    nb.x += nb.vx + Math.sin(time * 0.3 + nb.hueOff) * 0.3;
+    nb.y += nb.vy + Math.cos(time * 0.25 + nb.hueOff) * 0.3;
+
+    if (nb.x < -200) nb.x = w + 200;
+    if (nb.x > w + 200) nb.x = -200;
+    if (nb.y < -200) nb.y = h + 200;
+    if (nb.y > h + 200) nb.y = -200;
+
+    if (nb.alpha > 0.003) {
+      const nbHue = (hueBase + nb.hueOff) % 360;
+      const r = nb.radius + beatPower * 50;
+      const grad = ctx.createRadialGradient(nb.x, nb.y, 0, nb.x, nb.y, r);
+      grad.addColorStop(0, hslString(nbHue, 0.7, 0.4, nb.alpha));
+      grad.addColorStop(0.5, hslString((nbHue + 30) % 360, 0.5, 0.2, nb.alpha * 0.4));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(nb.x, nb.y, r, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
-  // ===== DROP MOMENT: massive instant bursts =====
-  if (isDropMoment) {
-    flashAlpha = 0.35;
-    const numBursts = 4 + Math.floor(Math.random() * 4);
-    for (let b = 0; b < numBursts; b++) {
-      const bx = w * 0.1 + Math.random() * w * 0.8;
-      const by = h * 0.1 + Math.random() * h * 0.4;
-      const fakeRocket = {
-        x: bx, y: by,
-        hue: (hueBase + b * 40) % 360,
-        sparkCount: 60 + Math.floor(Math.random() * 60),
-        burstType: Math.floor(Math.random() * 5),
-      };
-      sparks.push(...burstRocket(fakeRocket));
-    }
-    dropBuildup = 0;
-    dropFadeActive = 0;
-    postDropTime = 0;
-    patternPhase = (patternPhase + 1) % 4;
-  }
-
-  // Pattern rotation
-  patternAngle += dt * (0.3 + energy * 0.8 + beatPower);
+  // ===== PARTICLES =====
+  const bandVals = [rawBass, rawMid, rawHigh];
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
-  // ===== ROCKETS =====
-  for (let i = rockets.length - 1; i >= 0; i--) {
-    const r = rockets[i];
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const bv = bandVals[p.band];
+    const dx = cx - p.x;
+    const dy = cy - p.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const fi = i / particles.length;
+
+    // ===== FORMATION TARGET =====
+    let targetX, targetY;
+
+    // Phase 0: EXPANDING RINGS (concentric, pulsing)
+    // Phase 1: SPIRAL GALAXY (2 arms)
+    // Phase 2: WAVE GRID (undulating)
+    // Phase 3: FIGURE 8 / INFINITY
+    // Phase 4: STAR BURST (radial lines)
+    // Phase 5: CHAOS SCATTER (no formation, pure physics)
+
+    const phase = formationPhase;
+
+    if (phase === 0) {
+      // Concentric rings — 5 rings, each pulsing differently
+      const ring = Math.floor(fi * 5);
+      const ringPos = (fi * 5) % 1;
+      const ringR = (ring + 1) * minDim * 0.06 + map(bv, 0, 255, 0, 40) + Math.sin(time * 2 + ring) * 15;
+      const ringAngle = ringPos * Math.PI * 2 + formationAngle * (ring % 2 === 0 ? 1 : -0.7);
+      targetX = cx + Math.cos(ringAngle) * ringR;
+      targetY = cy + Math.sin(ringAngle) * ringR;
+    } else if (phase === 1) {
+      // Spiral galaxy — 2 arms
+      const arm = i % 2;
+      const spiralR = fi * minDim * 0.4 + map(bv, 0, 255, -20, 40);
+      const spiralAngle = fi * Math.PI * 10 + formationAngle * 1.5 + arm * Math.PI;
+      targetX = cx + Math.cos(spiralAngle) * spiralR;
+      targetY = cy + Math.sin(spiralAngle) * spiralR;
+    } else if (phase === 2) {
+      // Wave grid
+      const cols = Math.ceil(Math.sqrt(particles.length));
+      const gx = i % cols;
+      const gy = Math.floor(i / cols);
+      const spacing = minDim * 0.7 / cols;
+      const wave = Math.sin(gx * 0.3 + time * 4) * map(bv, 0, 255, 5, 50);
+      const wave2 = Math.cos(gy * 0.25 + time * 3) * map(rawMid, 0, 255, 5, 35);
+      targetX = (w - minDim * 0.7) / 2 + gx * spacing + wave;
+      targetY = (h - minDim * 0.7) / 2 + gy * spacing + wave2;
+    } else if (phase === 3) {
+      // Figure 8 / infinity
+      const t8 = fi * Math.PI * 2 + formationAngle;
+      const scale8 = minDim * 0.2 + map(bv, 0, 255, 0, 50);
+      targetX = cx + Math.sin(t8) * scale8;
+      targetY = cy + Math.sin(t8 * 2) * scale8 * 0.5;
+    } else if (phase === 4) {
+      // Star burst — radial lines from center
+      const numLines = 8;
+      const lineIdx = i % numLines;
+      const linePos = Math.floor(i / numLines) / Math.ceil(particles.length / numLines);
+      const lineAngle = (lineIdx / numLines) * Math.PI * 2 + formationAngle * 0.3;
+      const lineR = linePos * minDim * 0.4 + map(bv, 0, 255, 0, 30);
+      targetX = cx + Math.cos(lineAngle) * lineR;
+      targetY = cy + Math.sin(lineAngle) * lineR;
+    } else {
+      // Phase 5: PURE CHAOS — target is a random noise-driven point
+      const noiseX = perlinOctaves(fi * 3, time * 0.5, 2) * minDim * 0.4;
+      const noiseY = perlinOctaves(fi * 3 + 100, time * 0.5, 2) * minDim * 0.4;
+      targetX = cx + noiseX;
+      targetY = cy + noiseY;
+    }
+
+    // ===== FORCES =====
+
+    // Formation pull — stronger pull = snappier formations
+    const formPull = 0.04 + energy * 0.03;
+    const blendedPull = formPull * clamp(formationBlend, 0, 1);
+    p.vx += (targetX - p.x) * blendedPull;
+    p.vy += (targetY - p.y) * blendedPull;
+
+    // Vortex tangential force (always present — keeps things moving)
+    const tangentX = -ny;
+    const tangentY = nx;
+    const spiralForce = 0.15 + energy * 0.6 + beatPower * 0.5;
+    p.vx += tangentX * spiralForce * 0.4;
+    p.vy += tangentY * spiralForce * 0.4;
+
+    // Frequency push (outward)
+    const freqIdx = Math.floor(map(fi, 0, 1, 0, freqData.length - 1));
+    const freqVal = freqData[freqIdx];
+    const freqPush = map(freqVal, 0, 255, 0, 5);
+    p.vx -= nx * freqPush * dt * 4;
+    p.vy -= ny * freqPush * dt * 4;
+
+    // Perlin flow field — organic, never-still movement
+    const noiseScale = 0.002 + chaosBurst * 0.003;
+    const noiseSpeed = 0.3 + energy * 0.5 + chaosBurst * 2;
+    const noiseAngle = perlinOctaves(p.x * noiseScale, p.y * noiseScale + time * noiseSpeed, 2) * Math.PI * 4;
+    const noiseStrength = 0.2 + chaosBurst * 1.5 + energy * 0.5;
+    p.vx += Math.cos(noiseAngle) * noiseStrength;
+    p.vy += Math.sin(noiseAngle) * noiseStrength;
+
+    // WARP BURST
+    if (warpPower > 0.05) {
+      const warpForce = warpPower * map(dist, 0, minDim * 0.5, 18, 4);
+      p.vx -= nx * warpForce;
+      p.vy -= ny * warpForce;
+      p.ember = Math.max(p.ember, warpPower);
+    }
+
+    // Beat explosion
+    if (isHardBeat && dist < minDim * 0.5) {
+      const blastForce = map(bassDelta, 25, 80, 5, 20);
+      p.vx -= nx * blastForce * (0.5 + Math.random());
+      p.vy -= ny * blastForce * (0.5 + Math.random());
+    }
+
+    // Chaos injection — random kicks
+    if (chaosBurst > 0.1) {
+      p.vx += (Math.random() - 0.5) * chaosBurst * 4;
+      p.vy += (Math.random() - 0.5) * chaosBurst * 4;
+    }
+
+    // Damping — keep it loose so particles stay lively
+    p.vx *= 0.965;
+    p.vy *= 0.965;
+
+    // Integrate
+    p.x += p.vx * 60 * dt;
+    p.y += p.vy * 60 * dt;
+
+    // Soft boundary
+    const margin = 30;
+    if (p.x < margin) p.vx += 1;
+    if (p.x > w - margin) p.vx -= 1;
+    if (p.y < margin) p.vy += 1;
+    if (p.y > h - margin) p.vy -= 1;
+
+    // Hard wrap
+    if (p.x < -60) p.x = w + 60;
+    if (p.x > w + 60) p.x = -60;
+    if (p.y < -60) p.y = h + 60;
+    if (p.y > h + 60) p.y = -60;
+
+    p.ember *= 0.94;
+
+    // ===== SIZE =====
+    const sizeBoost = map(bv, 0, 255, 0, 5) + p.ember * 4 + beatPower * 2;
+    p.size = lerp(p.size, p.baseSize + sizeBoost, 0.3);
+
+    // ===== TRAIL =====
+    const speed = Math.hypot(p.vx, p.vy);
+    p.trail.push({ x: p.x, y: p.y, size: p.size * 0.6 });
+    const maxTrail = speed > 2 ? TRAIL_LEN : 6;
+    while (p.trail.length > maxTrail) p.trail.shift();
+
+    // ===== RENDER =====
+    const hue = (hueBase + p.hueOff + bv * 0.3) % 360;
+    const lightness = map(bv, 0, 255, 0.3, 0.75);
+    const pAlpha = map(bv, 0, 255, 0.35, 1.0);
+
+    // Trail
+    for (let t = 0; t < p.trail.length; t++) {
+      const tp = p.trail[t];
+      const tRatio = t / p.trail.length;
+      const tAlpha = tRatio * pAlpha * 0.2;
+      const tSize = tp.size * tRatio;
+      if (tSize < 0.3) continue;
+
+      ctx.fillStyle = hslString(hue, 0.8, lightness, tAlpha);
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, tSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Warp streak
+    if (p.ember > 0.12 && speed > 2) {
+      const streakLen = speed * 3 * p.ember;
+      const angle = Math.atan2(p.vy, p.vx);
+      ctx.strokeStyle = hslString(hue, 0.9, 0.8, p.ember * 0.4);
+      ctx.lineWidth = p.size * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(p.x - Math.cos(angle) * streakLen, p.y - Math.sin(angle) * streakLen);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
+
+    // Outer glow
+    ctx.fillStyle = hslString(hue, 0.9, lightness, pAlpha * 0.12);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size + 6 + p.ember * 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mid glow
+    ctx.fillStyle = hslString(hue, 0.85, lightness + 0.1, pAlpha * 0.3);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size + 2 + p.ember * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.fillStyle = hslString(hue, 0.7, lightness + 0.25, pAlpha);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hot center
+    if (bv > 140) {
+      ctx.fillStyle = hslString(hue, 0.3, 0.95, map(bv, 140, 255, 0.1, 0.8));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ===== PLASMA CONNECTIONS =====
+  const gridSize = 90;
+  const grid = {};
+  const connLimit = Math.min(particles.length, 350);
+  for (let i = 0; i < connLimit; i++) {
+    const p = particles[i];
+    const key = `${Math.floor(p.x / gridSize)},${Math.floor(p.y / gridSize)}`;
+    if (!grid[key]) grid[key] = [];
+    grid[key].push(i);
+  }
+
+  const connDist = 65 + energy * 50 + beatPower * 30;
+  const connAlpha = 0.03 + energy * 0.1 + beatPower * 0.08;
+
+  for (const key in grid) {
+    const cell = grid[key];
+    const [gx, gy] = key.split(',').map(Number);
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const neighbor = grid[`${gx + ox},${gy + oy}`];
+        if (!neighbor) continue;
+        for (const ai of cell) {
+          for (const bi of neighbor) {
+            if (bi <= ai) continue;
+            const a = particles[ai], b = particles[bi];
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            if (d > connDist) continue;
+            const la = map(d, 0, connDist, connAlpha, 0);
+            const lh = (hueBase + (a.hueOff + b.hueOff) * 0.5) % 360;
+            ctx.strokeStyle = hslString(lh, 0.7, 0.6, la);
+            ctx.lineWidth = map(d, 0, connDist, 1.5, 0.3) + beatPower * 2;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+  }
+
+  ctx.restore();
+
+  // ===== VORTEX CORE =====
+  const coreSize = 12 + map(rawBass, 0, 255, 0, 45) + beatPower * 35;
+  const coreHue = hueBase % 360;
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreSize);
+  coreGrad.addColorStop(0, hslString(coreHue, 0.9, 0.9, 0.4 + beatPower * 0.4));
+  coreGrad.addColorStop(0.3, hslString(coreHue, 0.8, 0.6, 0.2));
+  coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreSize, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beat shockwave
+  if (beatPower > 0.1) {
+    const swR = minDim * 0.1 + (1 - beatPower) * minDim * 0.4;
+    ctx.strokeStyle = hslString(coreHue, 0.7, 0.7, beatPower * 0.35);
+    ctx.lineWidth = 2 + beatPower * 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, swR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // ===== DROP FIREWORKS — only on drops =====
+  dropCooldown = Math.max(0, dropCooldown - dt);
+
+  // Drop detection (brightness rising + bass vacuum + bass return)
+  let wSum = 0, tMag = 0;
+  for (let i = 0; i < freqData.length; i++) { wSum += i * freqData[i]; tMag += freqData[i]; }
+  const brightness = tMag > 0 ? (wSum / tMag / freqData.length) * 2.5 : 0;
+
+  const dhi = dHistIdx % 40;
+  centroidHist[dhi] = brightness;
+  bassAvgHist[dhi] = rawBass;
+  dHistIdx++;
+
+  let recentBright = 0, oldBright = 0, recentBassA = 0, oldBassA = 0;
+  for (let k = 0; k < 12; k++) {
+    recentBright += centroidHist[((dHistIdx - k) % 40 + 40) % 40];
+    oldBright += centroidHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
+    recentBassA += bassAvgHist[((dHistIdx - k) % 40 + 40) % 40];
+    oldBassA += bassAvgHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
+  }
+  recentBright /= 12; oldBright /= 12;
+  recentBassA /= 12; oldBassA /= 12;
+
+  const centroidRising = recentBright - oldBright > 0.015;
+  const bassVacuum = oldBassA > 10 && recentBassA / oldBassA < 0.55;
+  const bassReturn = bassDelta > 10 && rawBass > avgBass * 1.15;
+
+  dropDetected = dropCooldown <= 0 && (centroidRising || bassVacuum) && bassReturn;
+
+  // On drop: launch fireworks rockets
+  if (dropDetected) {
+    dropCooldown = 3;
+    flashAlpha = Math.max(flashAlpha, 0.3);
+
+    // Launch 5-8 rockets from bottom
+    const numRockets = 5 + Math.floor(Math.random() * 4);
+    for (let r = 0; r < numRockets; r++) {
+      const sx = w * 0.1 + Math.random() * w * 0.8;
+      const ty = h * 0.1 + Math.random() * h * 0.3;
+      const dx = (w * 0.15 + Math.random() * w * 0.7) - sx;
+      const dy = ty - (h + 5);
+      const d = Math.hypot(dx, dy);
+      const spd = 400 + Math.random() * 200;
+      dropRockets.push({
+        x: sx, y: h + 5,
+        vx: (dx / d) * spd, vy: (dy / d) * spd,
+        targetY: ty,
+        hue: (hueBase + r * 45) % 360,
+        trail: [],
+        sparkCount: 50 + Math.floor(Math.random() * 50),
+        burstType: Math.floor(Math.random() * 4),
+      });
+    }
+  }
+
+  // Update & render drop rockets
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  for (let i = dropRockets.length - 1; i >= 0; i--) {
+    const r = dropRockets[i];
     r.x += r.vx * dt;
     r.y += r.vy * dt;
-    r.vy += 25 * dt;
+    r.vy += 20 * dt;
 
     r.trail.push({ x: r.x, y: r.y });
-    while (r.trail.length > 12) r.trail.shift();
+    while (r.trail.length > 10) r.trail.shift();
 
-    // Rocket trail
     for (let t = 1; t < r.trail.length; t++) {
       const ratio = t / r.trail.length;
       ctx.strokeStyle = hslString(r.hue, 0.8, 0.8, ratio * 0.5);
-      ctx.lineWidth = ratio * r.size;
+      ctx.lineWidth = ratio * 2.5;
       ctx.beginPath();
       ctx.moveTo(r.trail[t-1].x, r.trail[t-1].y);
       ctx.lineTo(r.trail[t].x, r.trail[t].y);
       ctx.stroke();
     }
 
-    // Head
     ctx.fillStyle = hslString(r.hue, 0.5, 0.95, 0.9);
     ctx.beginPath();
-    ctx.arc(r.x, r.y, r.size, 0, Math.PI * 2);
+    ctx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     // Burst at target
     if (r.y <= r.targetY) {
-      sparks.push(...burstRocket(r));
-      rockets.splice(i, 1);
-      flashAlpha = Math.max(flashAlpha, 0.06);
+      const baseSpd = 100 + Math.random() * 80;
+      for (let s = 0; s < r.sparkCount; s++) {
+        const angle = (Math.PI * 2 * s) / r.sparkCount + Math.random() * 0.1;
+        const spd = baseSpd * (0.5 + Math.random() * 0.8);
+        const grav = [35, 20, 55, 30][r.burstType];
+        const drag = [0.97, 0.98, 0.96, 0.975][r.burstType];
+        const life = [1.8, 1.2, 2.5, 1.5][r.burstType] + Math.random();
+        dropSparks.push({
+          x: r.x, y: r.y,
+          vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+          life, maxLife: life,
+          size: 1.5 + Math.random() * 2,
+          hue: r.hue + Math.random() * 30,
+          gravity: grav, drag,
+          trail: [],
+        });
+      }
+      dropRockets.splice(i, 1);
+      flashAlpha = Math.max(flashAlpha, 0.1);
     }
   }
 
-  // ===== SPARKS — physics + pattern morphing =====
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i];
-    const fi = i / sparks.length;
-    const lifeRatio = clamp(s.life / s.maxLife, 0, 1);
-
-    // After initial burst, sparks gradually join rhythm patterns
-    s.patternForce = lerp(s.patternForce, 1, 0.008);
-    const pf = clamp(s.patternForce * (1 - lifeRatio * 0.5), 0, 0.6);
-
-    // Pattern target (only when patternForce > 0.2)
-    if (pf > 0.2) {
-      let tx = s.x, ty = s.y;
-      if (patternPhase === 0) {
-        // Orbiting ring
-        const ringAngle = fi * Math.PI * 2 + patternAngle;
-        const ringR = minDim * 0.2 + map(rawBass, 0, 255, 0, 50);
-        tx = cx + Math.cos(ringAngle) * ringR;
-        ty = cy + Math.sin(ringAngle) * ringR;
-      } else if (patternPhase === 1) {
-        // Wave
-        tx = map(fi, 0, 1, w * 0.05, w * 0.95);
-        ty = cy + Math.sin(fi * Math.PI * 4 + patternAngle * 2) * (50 + rawMid * 0.3);
-      } else if (patternPhase === 2) {
-        // Spiral
-        const sa = fi * Math.PI * 8 + patternAngle;
-        const sr = fi * minDim * 0.3;
-        tx = cx + Math.cos(sa) * sr;
-        ty = cy + Math.sin(sa) * sr;
-      } else {
-        // Grid pulse
-        const cols = 12;
-        const gx = (i % cols) / cols;
-        const gy = Math.floor(i / cols) / Math.ceil(sparks.length / cols);
-        tx = w * 0.1 + gx * w * 0.8 + Math.sin(gx * 6 + time * 3) * rawBass * 0.1;
-        ty = h * 0.15 + gy * h * 0.6 + Math.cos(gy * 6 + time * 2) * rawMid * 0.08;
-      }
-
-      s.vx += (tx - s.x) * pf * 0.03;
-      s.vy += (ty - s.y) * pf * 0.03;
-    }
-
-    // Beat push (keeps rhythm feel)
-    if (isBeat && pf > 0.3) {
-      const dx = s.x - cx;
-      const dy = s.y - cy;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      s.vx += (dx / dist) * beatPower * 6;
-      s.vy += (dy / dist) * beatPower * 6;
-    }
-
-    // Normal physics
+  // Update & render drop sparks
+  for (let i = dropSparks.length - 1; i >= 0; i--) {
+    const s = dropSparks[i];
     s.vx *= s.drag;
     s.vy *= s.drag;
-    s.vy += s.gravity * dt * (1 - pf * 0.8); // reduce gravity when in pattern
+    s.vy += s.gravity * dt;
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.life -= dt;
+    if (s.life <= 0) { dropSparks.splice(i, 1); continue; }
 
-    // Fade before drop: accelerate life decay
-    if (dropFadeActive > 0.3) {
-      s.life -= dt * dropFadeActive * 2;
-    }
+    const lr = clamp(s.life / s.maxLife, 0, 1);
+    const a = lr * lr;
 
-    if (s.life <= 0) { sparks.splice(i, 1); continue; }
-
-    const alpha = lifeRatio * lifeRatio * (1 - dropFadeActive * 0.5);
-
-    // Trail
     s.trail.push({ x: s.x, y: s.y });
-    while (s.trail.length > 6) s.trail.shift();
+    while (s.trail.length > 5) s.trail.shift();
 
     for (let t = 1; t < s.trail.length; t++) {
       const tR = t / s.trail.length;
-      ctx.strokeStyle = hslString(s.hue, 0.8, 0.6, tR * alpha * 0.2);
+      ctx.strokeStyle = hslString(s.hue, 0.8, 0.6, tR * a * 0.2);
       ctx.lineWidth = tR * s.size * 0.5;
       ctx.beginPath();
       ctx.moveTo(s.trail[t-1].x, s.trail[t-1].y);
@@ -357,41 +653,25 @@ export function render(freqData, timeData, dt, w, h, ctx) {
       ctx.stroke();
     }
 
-    // Glow
-    ctx.fillStyle = hslString(s.hue, 0.9, 0.6, alpha * 0.1);
+    ctx.fillStyle = hslString(s.hue, 0.9, 0.6, a * 0.1);
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size + 4, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, s.size + 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Core
-    ctx.fillStyle = hslString(s.hue, 0.6, 0.5 + lifeRatio * 0.4, alpha);
+    ctx.fillStyle = hslString(s.hue, 0.6, 0.5 + lr * 0.4, a);
     ctx.beginPath();
-    ctx.arc(s.x, s.y, s.size * Math.max(lifeRatio, 0.3), 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, s.size * lr, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  while (sparks.length > maxSparks) sparks.shift();
+  while (dropSparks.length > 1200) dropSparks.shift();
 
   ctx.restore();
-
-  // ===== GROUND REFLECTION =====
-  const groundY = h * 0.9;
-  const reflGrad = ctx.createLinearGradient(0, groundY, 0, h);
-  reflGrad.addColorStop(0, 'rgba(0,0,0,0)');
-  reflGrad.addColorStop(1, hslString(hueBase % 360, 0.3, 0.1, 0.06 + beatPower * 0.08));
-  ctx.fillStyle = reflGrad;
-  ctx.fillRect(0, groundY, w, h - groundY);
-
-  // Drop buildup indicator (subtle pulsing border)
-  if (dropBuildup > 0.1) {
-    const pulseA = dropBuildup * (0.1 + Math.sin(time * 8) * 0.05);
-    ctx.strokeStyle = hslString(0, 0.8, 0.6, pulseA);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(10, 10, w - 20, h - 20);
-  }
 }
 
 export function destroy() {
-  rockets = [];
-  sparks = [];
+  particles = [];
+  nebulaBlobs = [];
+  dropSparks = [];
+  dropRockets = [];
 }
