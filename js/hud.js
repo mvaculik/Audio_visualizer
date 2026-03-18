@@ -231,51 +231,64 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
     }
   }
 
-  // ===== DROP PREDICTOR (center-top) =====
-  if (mi.dropCharge > 0.05 || mi.isDropping) {
-    const dropX = w / 2;
-    const dropY = pad + 60;
+  // ===== DROP PREDICTOR (center-top) — always checks =====
+  const dropX = w / 2;
+  const dropY = pad + 60;
 
-    if (mi.isDropping) {
-      // DROP! flash
-      ctx.font = '900 42px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = hslString((hue + 180) % 360, 0.9, 0.8, 0.9);
-      ctx.fillText('DROP', dropX, dropY + 15);
+  if (mi.isDropping || mi.dropTimer > 0) {
+    // DROP! flash — stays visible for dropTimer duration
+    const dropAlpha = clamp(mi.dropTimer / 0.5, 0, 1);
+    const dropSize = 30 + (1 - dropAlpha) * 20; // grows as it fades
 
-      // Glow
-      ctx.fillStyle = hslString((hue + 180) % 360, 0.8, 0.7, 0.15);
-      ctx.beginPath();
-      ctx.arc(dropX, dropY, 60, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      // Building up
-      drawPanel(ctx, dropX - 80, dropY - 15, 160, 40, 'rgba(255,50,50,0.15)');
+    ctx.font = `900 ${dropSize + 12}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = hslString((hue + 180) % 360, 0.9, 0.85, dropAlpha);
+    ctx.fillText('DROP', dropX, dropY + 15);
 
-      ctx.font = HUD_FONT;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = hslString(0, 0.8, 0.6, 0.5 + mi.dropCharge * 0.5);
-      ctx.fillText('DROP INCOMING', dropX, dropY + 3);
+    // Wide glow
+    ctx.fillStyle = hslString((hue + 180) % 360, 0.8, 0.7, dropAlpha * 0.2);
+    ctx.beginPath();
+    ctx.arc(dropX, dropY, 80, 0, Math.PI * 2);
+    ctx.fill();
 
-      // Charge bar
-      const chargeW = 140;
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fillRect(dropX - chargeW / 2, dropY + 8, chargeW, 5);
+    // Shockwave ring
+    const swR = 30 + (1 - dropAlpha) * 120;
+    ctx.strokeStyle = hslString((hue + 180) % 360, 0.7, 0.7, dropAlpha * 0.4);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(dropX, dropY, swR, 0, Math.PI * 2);
+    ctx.stroke();
 
-      const chargeGrad = ctx.createLinearGradient(dropX - chargeW / 2, 0, dropX + chargeW / 2, 0);
-      chargeGrad.addColorStop(0, hslString(60, 0.9, 0.5, 0.8));
-      chargeGrad.addColorStop(1, hslString(0, 0.9, 0.5, 0.8));
-      ctx.fillStyle = chargeGrad;
-      ctx.fillRect(dropX - chargeW / 2, dropY + 8, chargeW * mi.dropCharge, 5);
+    ctx.textAlign = 'left';
+  } else if (mi.dropCharge > 0.03) {
+    // Building up — "DROP INCOMING"
+    drawPanel(ctx, dropX - 85, dropY - 15, 170, 42, 'rgba(255,50,50,0.15)');
 
-      // Pulsing border
-      if (mi.dropCharge > 0.6) {
-        const pulseA = 0.3 + Math.sin(Date.now() * 0.01) * 0.2;
-        ctx.strokeStyle = `rgba(255,80,80,${pulseA})`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(dropX - 81, dropY - 16, 162, 42);
-      }
+    ctx.font = HUD_FONT;
+    ctx.textAlign = 'center';
+    const incomingAlpha = 0.4 + mi.dropCharge * 0.6;
+    ctx.fillStyle = hslString(0, 0.8, 0.6, incomingAlpha);
+    ctx.fillText('DROP INCOMING', dropX, dropY + 3);
+
+    // Charge bar
+    const chargeW = 150;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(dropX - chargeW / 2, dropY + 10, chargeW, 6);
+
+    const chargeGrad = ctx.createLinearGradient(dropX - chargeW / 2, 0, dropX + chargeW / 2, 0);
+    chargeGrad.addColorStop(0, hslString(60, 0.9, 0.5, 0.9));
+    chargeGrad.addColorStop(1, hslString(0, 0.9, 0.5, 0.9));
+    ctx.fillStyle = chargeGrad;
+    ctx.fillRect(dropX - chargeW / 2, dropY + 10, chargeW * mi.dropCharge, 6);
+
+    // Pulsing border when close to drop
+    if (mi.dropCharge > 0.4) {
+      const pulseA = 0.2 + Math.sin(Date.now() * 0.015) * 0.3;
+      ctx.strokeStyle = `rgba(255,80,80,${pulseA})`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(dropX - 86, dropY - 16, 172, 44);
     }
+
     ctx.textAlign = 'left';
   }
 
@@ -362,7 +375,8 @@ function roundRect(ctx, x, y, w, h, r) {
 function getEmotionColor(emotion, hue) {
   switch (emotion) {
     case 'AGGRESSIVE': return hslString(0, 0.9, 0.6, 0.9);
-    case 'HARD DROP': return hslString(330, 0.9, 0.6, 0.9);
+    case 'HARD DROP': return hslString(330, 0.95, 0.65, 1);
+    case 'BUILD UP': return hslString(40, 0.9, 0.6, 0.9);
     case 'EUPHORIC': return hslString(50, 0.9, 0.7, 0.9);
     case 'ENERGETIC': return hslString(30, 0.8, 0.6, 0.9);
     case 'MELODIC': return hslString(180, 0.7, 0.6, 0.9);
