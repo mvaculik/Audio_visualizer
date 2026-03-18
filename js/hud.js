@@ -5,9 +5,30 @@ import { lerp, map, clamp, hslString } from './utils.js';
 const HUD_FONT = '500 11px monospace';
 const HUD_FONT_BIG = '700 28px monospace';
 const HUD_FONT_LABEL = '400 9px monospace';
-const HISTORY_LEN = 200; // matches music-intelligence
+const HISTORY_LEN = 200;
 
-let hudAlpha = 0; // fade in/out
+let hudAlpha = 0;
+
+// Smart alert system
+let alerts = [];
+let alertCooldowns = {};
+let prevEmotion = '';
+let prevBpm = 0;
+let screenFlashAlpha = 0;
+let screenFlashHue = 0;
+let edgeFlashAlpha = 0;
+let edgeFlashHue = 0;
+
+function pushAlert(id, text, color, duration = 2.5) {
+  // Cooldown check — same alert can't fire within cooldown period
+  const now = Date.now();
+  if (alertCooldowns[id] && now - alertCooldowns[id] < duration * 1000 + 500) return;
+  alertCooldowns[id] = now;
+
+  alerts.push({ text, color, timer: duration, maxTimer: duration, id });
+  // Max 4 alerts visible
+  while (alerts.length > 4) alerts.shift();
+}
 
 export function renderHud(ctx, w, h, mi, dt, visible) {
   // Smooth fade
@@ -292,56 +313,176 @@ export function renderHud(ctx, w, h, mi, dt, visible) {
     ctx.textAlign = 'left';
   }
 
-  // ===== SCAN LINES (subtle CRT effect over entire HUD area) =====
-  ctx.fillStyle = 'rgba(0,0,0,0.02)';
+  // ===== SMART ALERTS — trigger on events =====
+
+  // Alert: emotion change
+  if (mi.emotion !== prevEmotion && mi.emotion !== 'ANALYZING' && mi.emotion !== 'SILENT') {
+    if (mi.emotion === 'HARD DROP') {
+      pushAlert('drop', 'HARD DROP DETECTED', hslString(330, 0.9, 0.65, 1), 2);
+      screenFlashAlpha = 0.3;
+      screenFlashHue = 330;
+    } else if (mi.emotion === 'BUILD UP') {
+      pushAlert('buildup', 'ENERGY BUILD-UP', hslString(40, 0.9, 0.6, 1), 2);
+      edgeFlashAlpha = 0.4;
+      edgeFlashHue = 40;
+    } else if (mi.emotion === 'AGGRESSIVE') {
+      pushAlert('aggressive', 'MODE: AGGRESSIVE', hslString(0, 0.9, 0.6, 1), 2);
+      edgeFlashAlpha = 0.3;
+      edgeFlashHue = 0;
+    } else if (mi.emotion === 'EUPHORIC') {
+      pushAlert('euphoric', 'EUPHORIA DETECTED', hslString(50, 0.9, 0.7, 1), 2);
+      edgeFlashAlpha = 0.25;
+      edgeFlashHue = 50;
+    } else {
+      pushAlert('mood', `MOOD: ${mi.emotion}`, getEmotionColor(mi.emotion, hue), 1.5);
+    }
+    prevEmotion = mi.emotion;
+  }
+
+  // Alert: BPM locked
+  if (mi.bpm > 0 && prevBpm === 0) {
+    pushAlert('bpm', `BPM LOCKED: ${Math.round(mi.bpm)}`, accentColor, 2);
+    edgeFlashAlpha = 0.2;
+    edgeFlashHue = hue;
+  }
+  // Alert: BPM changed significantly
+  if (mi.bpm > 0 && prevBpm > 0 && Math.abs(mi.bpm - prevBpm) > 10) {
+    pushAlert('bpmchange', `BPM SHIFT: ${Math.round(mi.bpm)}`, hslString(180, 0.8, 0.6, 1), 1.5);
+  }
+  prevBpm = mi.bpm;
+
+  // Alert: drop detected
+  if (mi.isDropping && mi.dropTimer > 1.4) { // just triggered
+    screenFlashAlpha = Math.max(screenFlashAlpha, 0.35);
+    screenFlashHue = (hue + 180) % 360;
+  }
+
+  // Alert: high energy spike
+  if (mi.totalEnergy > 180 && mi.spectralFlux > 12) {
+    pushAlert('spike', 'ENERGY SPIKE', hslString(20, 0.9, 0.6, 1), 1.5);
+    screenFlashAlpha = Math.max(screenFlashAlpha, 0.12);
+    screenFlashHue = 20;
+  }
+
+  // Alert: silence after loud
+  if (mi.emotion === 'SILENT' && prevEmotion !== 'SILENT' && prevEmotion !== 'ANALYZING') {
+    pushAlert('silence', 'SIGNAL LOST', 'rgba(255,255,255,0.5)', 2);
+  }
+
+  // ===== SCREEN FLASH (full screen color wash) =====
+  if (screenFlashAlpha > 0.005) {
+    ctx.fillStyle = hslString(screenFlashHue, 0.7, 0.7, screenFlashAlpha);
+    ctx.fillRect(0, 0, w, h);
+    screenFlashAlpha *= 0.9;
+  }
+
+  // ===== EDGE FLASH (border glow on events) =====
+  if (edgeFlashAlpha > 0.005) {
+    const edgeW = 60;
+    // Top
+    const topGrad = ctx.createLinearGradient(0, 0, 0, edgeW);
+    topGrad.addColorStop(0, hslString(edgeFlashHue, 0.8, 0.6, edgeFlashAlpha));
+    topGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, w, edgeW);
+    // Bottom
+    const botGrad = ctx.createLinearGradient(0, h, 0, h - edgeW);
+    botGrad.addColorStop(0, hslString(edgeFlashHue, 0.8, 0.6, edgeFlashAlpha));
+    botGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = botGrad;
+    ctx.fillRect(0, h - edgeW, w, edgeW);
+    // Left
+    const leftGrad = ctx.createLinearGradient(0, 0, edgeW, 0);
+    leftGrad.addColorStop(0, hslString(edgeFlashHue, 0.8, 0.6, edgeFlashAlpha * 0.7));
+    leftGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(0, 0, edgeW, h);
+    // Right
+    const rightGrad = ctx.createLinearGradient(w, 0, w - edgeW, 0);
+    rightGrad.addColorStop(0, hslString(edgeFlashHue, 0.8, 0.6, edgeFlashAlpha * 0.7));
+    rightGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rightGrad;
+    ctx.fillRect(w - edgeW, 0, edgeW, h);
+
+    edgeFlashAlpha *= 0.92;
+  }
+
+  // ===== RENDER ALERTS (right side, stacked) =====
+  const alertX = w - pad - 10;
+  let alertY = h / 2 - (alerts.length * 30) / 2;
+
+  for (let i = alerts.length - 1; i >= 0; i--) {
+    const a = alerts[i];
+    a.timer -= dt;
+    if (a.timer <= 0) { alerts.splice(i, 1); continue; }
+
+    const fadeIn = clamp((a.maxTimer - a.timer) / 0.2, 0, 1);
+    const fadeOut = clamp(a.timer / 0.3, 0, 1);
+    const alpha = Math.min(fadeIn, fadeOut);
+    const slideX = (1 - fadeIn) * 50;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Alert bg
+    ctx.textAlign = 'right';
+    ctx.font = '600 12px monospace';
+    const textW = ctx.measureText(a.text).width;
+
+    drawPanel(ctx, alertX - textW - 24 + slideX, alertY - 10, textW + 20, 24, 'rgba(0,0,0,0.5)');
+
+    // Colored left accent bar
+    ctx.fillStyle = a.color;
+    ctx.fillRect(alertX - textW - 24 + slideX, alertY - 10, 3, 24);
+
+    // Text
+    ctx.fillStyle = a.color;
+    ctx.fillText(a.text, alertX - 8 + slideX, alertY + 5);
+
+    ctx.restore();
+    alertY += 30;
+  }
+
+  // ===== BEAT FLASH BORDER (pulses on every beat) =====
+  if (mi.beatPhase < 0.15 && mi.bpm > 0) {
+    const beatFlash = 1 - mi.beatPhase / 0.15;
+    ctx.strokeStyle = hslString(hue, 0.5, 0.6, beatFlash * 0.08);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(pad - 5, pad - 5, w - pad * 2 + 10, h - pad * 2 + 10);
+  }
+
+  // ===== SCAN LINES =====
+  ctx.fillStyle = 'rgba(0,0,0,0.015)';
   for (let sy = 0; sy < h; sy += 3) {
     ctx.fillRect(0, sy, w, 1);
   }
 
-  // ===== CORNER BRACKETS (sci-fi frame) =====
+  // ===== CORNER BRACKETS =====
   const bracketSize = 25;
-  const bracketWidth = 1;
-  ctx.strokeStyle = hslString(hue, 0.5, 0.5, 0.2);
-  ctx.lineWidth = bracketWidth;
+  ctx.strokeStyle = hslString(hue, 0.5, 0.5, 0.2 + edgeFlashAlpha);
+  ctx.lineWidth = 1;
 
-  // Top-left
   ctx.beginPath();
-  ctx.moveTo(pad, pad + bracketSize);
-  ctx.lineTo(pad, pad);
-  ctx.lineTo(pad + bracketSize, pad);
+  ctx.moveTo(pad, pad + bracketSize); ctx.lineTo(pad, pad); ctx.lineTo(pad + bracketSize, pad);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w - pad - bracketSize, pad); ctx.lineTo(w - pad, pad); ctx.lineTo(w - pad, pad + bracketSize);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pad, h - pad - bracketSize); ctx.lineTo(pad, h - pad); ctx.lineTo(pad + bracketSize, h - pad);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w - pad - bracketSize, h - pad); ctx.lineTo(w - pad, h - pad); ctx.lineTo(w - pad, h - pad - bracketSize);
   ctx.stroke();
 
-  // Top-right
-  ctx.beginPath();
-  ctx.moveTo(w - pad - bracketSize, pad);
-  ctx.lineTo(w - pad, pad);
-  ctx.lineTo(w - pad, pad + bracketSize);
-  ctx.stroke();
-
-  // Bottom-left
-  ctx.beginPath();
-  ctx.moveTo(pad, h - pad - bracketSize);
-  ctx.lineTo(pad, h - pad);
-  ctx.lineTo(pad + bracketSize, h - pad);
-  ctx.stroke();
-
-  // Bottom-right
-  ctx.beginPath();
-  ctx.moveTo(w - pad - bracketSize, h - pad);
-  ctx.lineTo(w - pad, h - pad);
-  ctx.lineTo(w - pad, h - pad - bracketSize);
-  ctx.stroke();
-
-  // ===== TOP CENTER: tiny status line =====
+  // ===== STATUS LINE =====
   ctx.font = HUD_FONT_LABEL;
   ctx.fillStyle = textDim;
   ctx.textAlign = 'center';
-  const statusParts = [
-    `FFT:${128}`,
-    `E:${Math.round(mi.totalEnergy)}`,
-    `FLUX:${mi.spectralFlux.toFixed(1)}`,
-  ];
-  ctx.fillText(statusParts.join('  //  '), w / 2, pad + 12);
+  ctx.fillText(
+    `FFT:128  //  E:${Math.round(mi.totalEnergy)}  //  FLUX:${mi.spectralFlux.toFixed(1)}  //  BRT:${(mi.brightness * 100).toFixed(0)}%`,
+    w / 2, pad + 12
+  );
   ctx.textAlign = 'left';
 
   ctx.restore();
