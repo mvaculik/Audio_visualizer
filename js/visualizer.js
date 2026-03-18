@@ -40,7 +40,7 @@ export class Visualizer {
 
     // Music intelligence + HUD
     this.mi = new MusicIntelligence();
-    this.hudVisible = false;
+    this.hudVisible = true;
 
     this._initDust();
     this._initFalling();
