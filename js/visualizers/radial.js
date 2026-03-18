@@ -199,23 +199,25 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   }
   ctx.restore();
 
-  // ===== RADIAL BARS — thick, glowing, aggressive =====
+  // ===== RADIAL BARS — full circle, mirrored, no gaps =====
   const radsPerBar = (Math.PI * 2) / BARS;
+  const halfBars = Math.floor(BARS / 2);
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
   for (let i = 0; i < BARS; i++) {
-    const freqIndex = Math.floor(map(i, 0, BARS, 0, freqData.length - 1));
-    const rawValue = freqData[freqIndex];
+    // Mirror: first half 0→max freq, second half max→0 (symmetric circle)
+    const mirrorIdx = i < halfBars ? i : BARS - 1 - i;
+    const freqIndex = Math.floor(map(mirrorIdx, 0, halfBars, 0, freqData.length - 1));
+    const rawValue = freqData[clamp(freqIndex, 0, freqData.length - 1)];
 
-    // Amplify response — don't over-smooth individual bars
-    const value = rawValue;
-    if (value < 15) continue; // skip silent bars
+    // Always draw — minimum tiny bar so circle is always full
+    const value = Math.max(rawValue, 8);
 
     const maxBarH = minDim * 0.35;
-    const barHeight = map(value, 0, 255, 0, maxBarH);
-    const barWidth = Math.max(1.5, map(value, 0, 255, 1, 4));
+    const barHeight = map(value, 0, 255, 2, maxBarH);
+    const barWidth = Math.max(1.5, map(value, 0, 255, 1.2, 4.5));
 
     const angle = radsPerBar * i + beatAccum;
     const x1 = cx + Math.cos(angle) * (smoothRadius + 5);
