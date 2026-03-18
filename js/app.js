@@ -236,9 +236,12 @@ class App {
         this.ytPlayer.loadVideo(track.src);
         this.ytPlayer.setVolume(parseInt(this.els.volumeSlider.value));
         this.simulation.setState('playing');
+        // Try to capture mic for real audio analysis
+        this._enableMicForYouTube();
       }
     } else {
       this.activeSource = 'local';
+      this.audioEngine.stopMicCapture(); // stop mic when playing local
       this.audioEngine.loadFile(track.src);
       try {
         await this.audioEngine.play();
@@ -464,14 +467,36 @@ class App {
     }, 2500);
   }
 
+  // ===== Mic Capture for YouTube =====
+  async _enableMicForYouTube() {
+    if (this.audioEngine.isMicActive) return; // already active
+    this._showToast('Enable mic for real-time visualization? (allow in browser prompt)');
+    const ok = await this.audioEngine.startMicCapture();
+    if (ok) {
+      this._showToast('Mic active — real-time audio visualization enabled');
+    } else {
+      this._showToast('Mic denied — using simulated visualization');
+    }
+  }
+
   // ===== Render Loop =====
   _renderLoop() {
     let freqData, timeData;
 
     if (this.activeSource === 'youtube') {
-      this.simulation.update(1 / 60);
-      freqData = this.simulation.getFrequencyData();
-      timeData = this.simulation.getTimeDomainData();
+      // Prefer mic capture (real audio) over simulation
+      const micFreq = this.audioEngine.getMicFrequencyData();
+      const micTime = this.audioEngine.getMicTimeDomainData();
+
+      if (micFreq && micTime) {
+        freqData = micFreq;
+        timeData = micTime;
+      } else {
+        // Fallback to simulation
+        this.simulation.update(1 / 60);
+        freqData = this.simulation.getFrequencyData();
+        timeData = this.simulation.getTimeDomainData();
+      }
     } else {
       freqData = this.audioEngine.getFrequencyData();
       timeData = this.audioEngine.getTimeDomainData();
