@@ -225,7 +225,7 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     const barHeight = map(value, 0, 255, 8, maxBarH);
     const barWidth = Math.max(1.3, map(value, 0, 255, 1.2, 4.5));
 
-    const angle = radsPerBar * i + beatAccum;
+    const angle = radsPerBar * i; // NO rotation — keeps symmetry perfect
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
 
@@ -410,33 +410,79 @@ export function render(freqData, timeData, dt, w, h, ctx) {
     ctx.fillRect(0, 0, w, h);
   }
 
-  // ===== DROP FIREWORKS — rockets + bursts only on drops =====
+  // ===== DROP FIREWORKS — rockets + bursts only on real drops =====
+  // Drop = build-up (snare rolls, risers, rising pitch) → silence/pause → BASS RETURNS
+  // Key signals:
+  // 1. Build-up: brightness rises over 2-3s (risers, hi-hats accelerating)
+  // 2. Bass vacuum: bass drops out while mids/highs stay
+  // 3. Brief silence: sudden energy dip
+  // 4. DROP: bass explodes back, total energy spikes
+
   dropCooldown = Math.max(0, dropCooldown - dt);
 
-  // Drop detection
+  // Spectral brightness (centroid)
   let wSum = 0, tMag = 0;
   for (let i = 0; i < freqData.length; i++) { wSum += i * freqData[i]; tMag += freqData[i]; }
   const brightness = tMag > 0 ? (wSum / tMag / freqData.length) * 2.5 : 0;
 
+  // Track history for trend analysis
   const dhi = dHistIdx % 40;
   centroidHist[dhi] = brightness;
   bassAvgHist[dhi] = rawBass;
   dHistIdx++;
 
-  let rBright = 0, oBright = 0, rBassA = 0, oBassA = 0;
-  for (let k = 0; k < 12; k++) {
-    rBright += centroidHist[((dHistIdx - k) % 40 + 40) % 40];
-    oBright += centroidHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
-    rBassA += bassAvgHist[((dHistIdx - k) % 40 + 40) % 40];
-    oBassA += bassAvgHist[((dHistIdx - 20 - k) % 40 + 40) % 40];
+  // Compare RECENT (last ~0.6s) vs OLD (1.5s ago) for both brightness and bass
+  let recentBright = 0, oldBright = 0, recentBassA = 0, oldBassA = 0;
+  let veryRecentEnergy = 0, slightlyOldEnergy = 0;
+  for (let k = 0; k < 10; k++) {
+    const rIdx = ((dHistIdx - k) % 40 + 40) % 40;
+    const oIdx = ((dHistIdx - 20 - k) % 40 + 40) % 40;
+    recentBright += centroidHist[rIdx];
+    oldBright += centroidHist[oIdx];
+    recentBassA += bassAvgHist[rIdx];
+    oldBassA += bassAvgHist[oIdx];
   }
-  rBright /= 12; oBright /= 12; rBassA /= 12; oBassA /= 12;
+  recentBright /= 10; oldBright /= 10;
+  recentBassA /= 10; oldBassA /= 10;
 
-  const cRising = rBright - oBright > 0.015;
-  const bVacuum = oBassA > 10 && rBassA / oBassA < 0.55;
-  const bReturn = bassDelta > 10 && rawBass > avgEnergy * 1.15;
+  // Very recent energy (last 3 frames) vs slightly older (5-8 frames ago)
+  for (let k = 0; k < 3; k++) {
+    veryRecentEnergy += bassAvgHist[((dHistIdx - k) % 40 + 40) % 40];
+  }
+  for (let k = 5; k < 8; k++) {
+    slightlyOldEnergy += bassAvgHist[((dHistIdx - k) % 40 + 40) % 40];
+  }
+  veryRecentEnergy /= 3;
+  slightlyOldEnergy /= 3;
 
-  if (dropCooldown <= 0 && (cRising || bVacuum) && bReturn) {
+  // === DETECTION SIGNALS ===
+
+  // 1. Build-up: brightness has been rising (risers, snare rolls)
+  const buildupDetected = recentBright - oldBright > 0.01;
+
+  // 2. Bass vacuum: bass was present before, now it's reduced
+  const bassWasPresent = oldBassA > 30;
+  const bassDroppedOut = bassWasPresent && recentBassA < oldBassA * 0.6;
+
+  // 3. Brief silence/dip: very recent energy much lower than slightly older
+  const silenceDip = slightlyOldEnergy > 30 && veryRecentEnergy < slightlyOldEnergy * 0.5;
+
+  // 4. Bass return: sudden bass spike RIGHT NOW
+  const bassExploding = bassDelta > 8 && rawBass > 50;
+  const bigBassReturn = bassDelta > 15;
+
+  // 5. Simple loud spike after quiet: energy jumped significantly
+  const energyJump = rawBass > avgEnergy * 1.3 && avgEnergy > 15;
+
+  // === TRIGGER DROP ===
+  // Method A: classic build-up → bass return
+  const classicDrop = (buildupDetected || bassDroppedOut) && bassExploding;
+  // Method B: silence → boom
+  const silenceDrop = silenceDip && bassExploding;
+  // Method C: sudden massive bass spike (catch obvious drops)
+  const obviousDrop = bigBassReturn && energyJump && rawBass > 100;
+
+  if (dropCooldown <= 0 && (classicDrop || silenceDrop || obviousDrop)) {
     dropCooldown = 3;
     flashAlpha = Math.max(flashAlpha, 0.35);
 
