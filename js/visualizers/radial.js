@@ -1,6 +1,7 @@
 // js/visualizers/radial.js — FIRED radial visualizer with aggressive reactivity
 
 import { lerp, map, clamp, hslString, perlin } from '../utils.js';
+import { initBust, renderBust } from './bust.js';
 
 const BARS = 220;
 const ORBIT_PARTICLES = 80;
@@ -22,6 +23,7 @@ let screenShakeX = 0;
 let screenShakeY = 0;
 let energyHistory = new Float32Array(8);
 let energyIdx = 0;
+let beatPower = 0;
 
 export function init(canvas, ctx) {
   orbitParticles = [];
@@ -42,6 +44,7 @@ export function init(canvas, ctx) {
   beatAccum = 0;
   flashAlpha = 0;
   energyHistory.fill(0);
+  initBust();
 }
 
 export function render(freqData, timeData, dt, w, h, ctx) {
@@ -78,6 +81,11 @@ export function render(freqData, timeData, dt, w, h, ctx) {
   const isBeat = rawBass > avgEnergy * 1.15 && bassDelta > 15;
   const isHardBeat = rawBass > avgEnergy * 1.4 && bassDelta > 35;
   prevBass = rawBass;
+
+  // Beat power (for bust and effects)
+  if (isHardBeat) beatPower = 1.0;
+  else if (isBeat) beatPower = Math.max(beatPower, 0.5);
+  beatPower *= 0.92;
 
   // ===== SCREEN FLASH on beats =====
   if (isHardBeat) {
@@ -245,41 +253,22 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== CENTER — pulsing glow =====
-  const glowPulse = smoothRadius + map(rawBass, 0, 255, 10, 45);
+  // ===== CENTER — 3D SLICED BUST =====
   const centerHue = hueOffset % 360;
+  const bustHeight = smoothRadius * 2.2;
 
-  // Outer glow
-  const grad = ctx.createRadialGradient(cx, cy, smoothRadius * 0.2, cx, cy, glowPulse);
-  grad.addColorStop(0, hslString(centerHue, 0.8, 0.25, 0.7));
-  grad.addColorStop(0.4, hslString(centerHue, 0.7, 0.15, 0.4));
-  grad.addColorStop(0.7, hslString((centerHue + 30) % 360, 0.6, 0.1, 0.15));
+  renderBust(ctx, cx, cy, bustHeight, dt, centerHue, rawBass, beatPower, isBeat, isHardBeat);
+
+  // Outer glow ring around bust area
+  const glowPulse = smoothRadius + map(rawBass, 0, 255, 10, 45);
+  const grad = ctx.createRadialGradient(cx, cy, smoothRadius * 0.3, cx, cy, glowPulse);
+  grad.addColorStop(0, hslString(centerHue, 0.7, 0.15, 0.3));
+  grad.addColorStop(0.6, hslString(centerHue, 0.5, 0.1, 0.1));
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.arc(cx, cy, glowPulse, 0, Math.PI * 2);
   ctx.fill();
-
-  // Inner dark circle
-  ctx.fillStyle = hslString(centerHue, 0.4, 0.05, 0.95);
-  ctx.beginPath();
-  ctx.arc(cx, cy, smoothRadius * 0.6, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Bright inner ring
-  const ringAlpha = map(rawBass, 0, 255, 0.3, 1.0);
-  ctx.strokeStyle = hslString(centerHue, 0.9, 0.6, ringAlpha);
-  ctx.lineWidth = map(rawBass, 0, 255, 1, 4);
-  ctx.beginPath();
-  ctx.arc(cx, cy, smoothRadius, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Second ring (mid-reactive)
-  ctx.strokeStyle = hslString((centerHue + 60) % 360, 0.7, 0.5, map(rawMid, 0, 255, 0.1, 0.5));
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(cx, cy, smoothRadius + 3, 0, Math.PI * 2);
-  ctx.stroke();
 
   // ===== ORBIT PARTICLES — with trails =====
   ctx.save();
@@ -352,4 +341,5 @@ export function destroy() {
   flashAlpha = 0;
   screenShakeX = 0;
   screenShakeY = 0;
+  beatPower = 0;
 }
