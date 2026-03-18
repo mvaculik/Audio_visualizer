@@ -1,7 +1,6 @@
 // js/visualizers/radial.js — FIRED radial visualizer with aggressive reactivity
 
 import { lerp, map, clamp, hslString, perlin } from '../utils.js';
-import { initBust, renderBust } from './bust.js';
 
 const BARS = 220;
 const ORBIT_PARTICLES = 80;
@@ -25,6 +24,15 @@ let energyHistory = new Float32Array(8);
 let energyIdx = 0;
 let beatPower = 0;
 
+// Center image
+let centerImg = null;
+let imgLoaded = false;
+let imgScale = 1;
+let imgRotation = 0;
+let imgBounceY = 0;
+let imgGlitchTimer = 0;
+let imgGlitchSlices = [];
+
 export function init(canvas, ctx) {
   orbitParticles = [];
   for (let i = 0; i < ORBIT_PARTICLES; i++) {
@@ -44,7 +52,19 @@ export function init(canvas, ctx) {
   beatAccum = 0;
   flashAlpha = 0;
   energyHistory.fill(0);
-  initBust();
+  beatPower = 0;
+  imgScale = 1;
+  imgRotation = 0;
+  imgBounceY = 0;
+  imgGlitchTimer = 0;
+  imgGlitchSlices = [];
+
+  // Load center image
+  if (!centerImg) {
+    centerImg = new Image();
+    centerImg.onload = () => { imgLoaded = true; };
+    centerImg.src = 'assets/virus.png';
+  }
 }
 
 export function render(freqData, timeData, dt, w, h, ctx) {
@@ -253,22 +273,133 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== CENTER — 3D SLICED BUST =====
+  // ===== CENTER — VIRUS IMAGE with beat reactivity =====
   const centerHue = hueOffset % 360;
-  const bustHeight = smoothRadius * 2.2;
 
-  renderBust(ctx, cx, cy, bustHeight, dt, centerHue, rawBass, beatPower, isBeat, isHardBeat);
-
-  // Outer glow ring around bust area
-  const glowPulse = smoothRadius + map(rawBass, 0, 255, 10, 45);
-  const grad = ctx.createRadialGradient(cx, cy, smoothRadius * 0.3, cx, cy, glowPulse);
-  grad.addColorStop(0, hslString(centerHue, 0.7, 0.15, 0.3));
-  grad.addColorStop(0.6, hslString(centerHue, 0.5, 0.1, 0.1));
+  // Glow behind image
+  const glowPulse = smoothRadius + map(rawBass, 0, 255, 10, 50);
+  const grad = ctx.createRadialGradient(cx, cy, smoothRadius * 0.2, cx, cy, glowPulse);
+  grad.addColorStop(0, hslString(centerHue, 0.8, 0.25, 0.5 + beatPower * 0.3));
+  grad.addColorStop(0.5, hslString(centerHue, 0.6, 0.15, 0.2));
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.beginPath();
   ctx.arc(cx, cy, glowPulse, 0, Math.PI * 2);
   ctx.fill();
+
+  if (imgLoaded && centerImg) {
+    // Scale pulses with bass (snappy)
+    const targetScale = 1 + map(rawBass, 0, 255, 0, 0.25) + beatPower * 0.15;
+    imgScale = lerp(imgScale, targetScale, 0.3);
+
+    // Rotation: slight tilt on beats, bounces back
+    if (isHardBeat) imgRotation += (Math.random() - 0.5) * 0.15;
+    imgRotation *= 0.9; // spring back
+
+    // Vertical bounce on beats
+    if (isBeat) imgBounceY = -8 - beatPower * 12;
+    imgBounceY *= 0.85;
+
+    // Glitch: on hard beats, slice the image
+    if (isHardBeat) {
+      imgGlitchTimer = 0.1 + Math.random() * 0.12;
+      imgGlitchSlices = [];
+      const numSlices = 3 + Math.floor(Math.random() * 5);
+      for (let i = 0; i < numSlices; i++) {
+        imgGlitchSlices.push({
+          y: Math.random(),       // relative position in image (0-1)
+          h: 0.03 + Math.random() * 0.1, // slice height relative
+          offX: (Math.random() - 0.5) * 30, // horizontal offset
+          chromatic: (Math.random() - 0.5) * 8,
+        });
+      }
+    }
+    if (imgGlitchTimer > 0) imgGlitchTimer -= dt;
+
+    const imgSize = smoothRadius * 2 * imgScale;
+    const halfSize = imgSize / 2;
+    const drawX = cx - halfSize;
+    const drawY = cy - halfSize + imgBounceY;
+
+    ctx.save();
+    ctx.translate(cx, cy + imgBounceY);
+    ctx.rotate(imgRotation);
+
+    if (imgGlitchTimer > 0 && imgGlitchSlices.length > 0) {
+      // ===== GLITCH RENDER: draw image in slices with offsets =====
+      const sliceData = imgGlitchSlices;
+
+      // First draw the full image as base
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(centerImg, -halfSize, -halfSize, imgSize, imgSize);
+      ctx.globalAlpha = 1;
+
+      // Then draw glitched slices on top
+      for (const s of sliceData) {
+        const srcY = s.y * centerImg.naturalHeight;
+        const srcH = s.h * centerImg.naturalHeight;
+        const destY = -halfSize + s.y * imgSize;
+        const destH = s.h * imgSize;
+
+        // Main slice (offset)
+        ctx.drawImage(
+          centerImg,
+          0, srcY, centerImg.naturalWidth, srcH,
+          -halfSize + s.offX, destY, imgSize, destH
+        );
+
+        // Chromatic aberration
+        if (Math.abs(s.chromatic) > 1) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.15;
+          // Red channel
+          ctx.drawImage(
+            centerImg,
+            0, srcY, centerImg.naturalWidth, srcH,
+            -halfSize + s.offX + s.chromatic, destY, imgSize, destH
+          );
+          // Cyan channel
+          ctx.drawImage(
+            centerImg,
+            0, srcY, centerImg.naturalWidth, srcH,
+            -halfSize + s.offX - s.chromatic, destY, imgSize, destH
+          );
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      }
+
+      // Horizontal glitch lines
+      const numLines = 2 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < numLines; i++) {
+        const ly = -halfSize + Math.random() * imgSize;
+        const lw = imgSize * (0.3 + Math.random() * 0.7);
+        const lx = -lw / 2 + (Math.random() - 0.5) * 20;
+        ctx.fillStyle = hslString((centerHue + Math.random() * 60) % 360, 0.8, 0.7, 0.12);
+        ctx.fillRect(lx, ly, lw, 1 + Math.random() * 3);
+      }
+    } else {
+      // ===== NORMAL RENDER =====
+      ctx.drawImage(centerImg, -halfSize, -halfSize, imgSize, imgSize);
+    }
+
+    ctx.restore();
+
+    // Neon ring around image
+    const ringAlpha = map(rawBass, 0, 255, 0.15, 0.6) + beatPower * 0.3;
+    ctx.strokeStyle = hslString(centerHue, 0.9, 0.6, ringAlpha);
+    ctx.lineWidth = 1.5 + beatPower * 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy + imgBounceY, halfSize + 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Second ring (wider, dimmer)
+    ctx.strokeStyle = hslString((centerHue + 40) % 360, 0.6, 0.5, ringAlpha * 0.3);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy + imgBounceY, halfSize + 12 + beatPower * 8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   // ===== ORBIT PARTICLES — with trails =====
   ctx.save();
