@@ -37,6 +37,7 @@ export class Visualizer {
     this._bgPulse = 0;
 
     this._initDust();
+    this._initFalling();
     this._resize();
     window.addEventListener('resize', () => this._resize());
   }
@@ -52,6 +53,42 @@ export class Visualizer {
         speed: 0.002 + Math.random() * 0.005,
         alpha: 0.1 + Math.random() * 0.2,
         drift: (Math.random() - 0.5) * 0.001,
+      });
+    }
+  }
+
+  _initFalling() {
+    const isMobile = window.innerWidth < 768;
+    // Falling energy streaks
+    this.streaks = [];
+    const streakCount = isMobile ? 15 : 40;
+    for (let i = 0; i < streakCount; i++) {
+      this.streaks.push({
+        x: Math.random(),
+        y: Math.random(),
+        speed: 0.15 + Math.random() * 0.4,
+        length: 20 + Math.random() * 80,
+        alpha: 0.02 + Math.random() * 0.06,
+        width: 0.5 + Math.random() * 1.5,
+        hueOff: Math.random() * 60,
+        drift: (Math.random() - 0.5) * 0.02,
+      });
+    }
+    // Falling geometric fragments
+    this.fragments = [];
+    const fragCount = isMobile ? 8 : 20;
+    for (let i = 0; i < fragCount; i++) {
+      this.fragments.push({
+        x: Math.random(),
+        y: Math.random(),
+        speed: 0.03 + Math.random() * 0.08,
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 2,
+        size: 3 + Math.random() * 10,
+        sides: [3, 4, 5, 6][Math.floor(Math.random() * 4)],
+        alpha: 0.02 + Math.random() * 0.05,
+        hueOff: Math.random() * 120,
+        drift: (Math.random() - 0.5) * 0.01,
       });
     }
   }
@@ -156,6 +193,73 @@ export class Visualizer {
       ctx.beginPath();
       ctx.arc(d.x * w, d.y * h, dustSize, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // ===== Falling energy streaks (behind visualizer) =====
+    const bgHue1 = this.bgHue % 360;
+    for (const s of this.streaks) {
+      s.y += s.speed * dt;
+      s.x += s.drift * dt + Math.sin(now * 0.001 + s.x * 5) * 0.0002;
+      if (s.y > 1.1) { s.y = -0.05; s.x = Math.random(); }
+      if (s.x < 0) s.x = 1;
+      if (s.x > 1) s.x = 0;
+
+      const sx = s.x * w;
+      const sy = s.y * h;
+      const sLen = s.length + bassNow * 0.15 + (isBeat ? 20 : 0);
+      const sAlpha = s.alpha + bassNow * 0.0002;
+      const sHue = (bgHue1 + s.hueOff) % 360;
+
+      const grad = ctx.createLinearGradient(sx, sy - sLen, sx, sy);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.3, hslString(sHue, 0.5, 0.5, sAlpha * 0.3));
+      grad.addColorStop(1, hslString(sHue, 0.6, 0.7, sAlpha));
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = s.width;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - sLen);
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+
+      // Bright head
+      ctx.fillStyle = hslString(sHue, 0.4, 0.8, sAlpha * 1.5);
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.width, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ===== Falling geometric fragments =====
+    for (const f of this.fragments) {
+      f.y += f.speed * dt;
+      f.x += f.drift * dt;
+      f.rotation += f.rotSpeed * dt * (1 + bassNow * 0.003);
+      if (f.y > 1.1) { f.y = -0.05; f.x = Math.random(); }
+      if (f.x < -0.05) f.x = 1.05;
+      if (f.x > 1.05) f.x = -0.05;
+
+      const fx = f.x * w;
+      const fy = f.y * h;
+      const fAlpha = f.alpha + bassNow * 0.0001 + (isBeat ? 0.03 : 0);
+      const fHue = (bgHue1 + f.hueOff) % 360;
+      const fSize = f.size + bassNow * 0.01;
+
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(f.rotation);
+
+      ctx.strokeStyle = hslString(fHue, 0.5, 0.5, fAlpha);
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      for (let s = 0; s <= f.sides; s++) {
+        const a = (Math.PI * 2 * s) / f.sides;
+        const px = Math.cos(a) * fSize;
+        const py = Math.sin(a) * fSize;
+        if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      ctx.restore();
     }
 
     // ===== Render active visualizer =====

@@ -24,14 +24,13 @@ let energyHistory = new Float32Array(8);
 let energyIdx = 0;
 let beatPower = 0;
 
-// Center image
-let centerImg = null;
-let imgLoaded = false;
-let imgScale = 1;
-let imgRotation = 0;
-let imgBounceY = 0;
-let imgGlitchTimer = 0;
-let imgGlitchSlices = [];
+// Sacred geometry portal
+let portalPhase = 0;      // morphs between shapes
+let portalGlitch = 0;
+let portalPulse = 0;
+let innerEyeOpen = 0;     // 0=closed, 1=open
+let lightningBolts = [];
+let portalRings = [];      // concentric rotating rings
 
 export function init(canvas, ctx) {
   orbitParticles = [];
@@ -53,17 +52,20 @@ export function init(canvas, ctx) {
   flashAlpha = 0;
   energyHistory.fill(0);
   beatPower = 0;
-  imgScale = 1;
-  imgRotation = 0;
-  imgBounceY = 0;
-  imgGlitchTimer = 0;
-  imgGlitchSlices = [];
-
-  // Load center image
-  if (!centerImg) {
-    centerImg = new Image();
-    centerImg.onload = () => { imgLoaded = true; };
-    centerImg.src = 'assets/virus.png';
+  portalPhase = 0;
+  portalGlitch = 0;
+  portalPulse = 0;
+  innerEyeOpen = 0;
+  lightningBolts = [];
+  portalRings = [];
+  for (let i = 0; i < 5; i++) {
+    portalRings.push({
+      radius: 0.3 + i * 0.15,
+      speed: (0.4 + i * 0.2) * (i % 2 === 0 ? 1 : -1),
+      sides: [6, 8, 3, 12, 5][i],
+      angle: 0,
+      alpha: 0,
+    });
   }
 }
 
@@ -275,133 +277,213 @@ export function render(freqData, timeData, dt, w, h, ctx) {
 
   ctx.restore();
 
-  // ===== CENTER — VIRUS IMAGE with beat reactivity =====
+  // ===== CENTER — SACRED GEOMETRY PORTAL =====
   const centerHue = hueOffset % 360;
 
-  // Glow behind image
-  const glowPulse = smoothRadius + map(rawBass, 0, 255, 10, 50);
-  const grad = ctx.createRadialGradient(cx, cy, smoothRadius * 0.2, cx, cy, glowPulse);
-  grad.addColorStop(0, hslString(centerHue, 0.8, 0.25, 0.5 + beatPower * 0.3));
-  grad.addColorStop(0.5, hslString(centerHue, 0.6, 0.15, 0.2));
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
+  portalPhase += dt * 0.15;
+  portalPulse = lerp(portalPulse, map(rawBass, 0, 255, 0, 1), 0.35);
+  innerEyeOpen = lerp(innerEyeOpen, map(rawBass, 0, 255, 0.2, 1), 0.2);
+
+  // Glitch on beats
+  if (isHardBeat) portalGlitch = 0.8 + Math.random() * 0.2;
+  else if (isBeat) portalGlitch = Math.max(portalGlitch, 0.3);
+  portalGlitch *= 0.88;
+
+  // Lightning bolts on hard beats
+  if (isHardBeat) {
+    const numBolts = 2 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < numBolts; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const segments = [];
+      let bx = 0, by = 0;
+      const segCount = 5 + Math.floor(Math.random() * 6);
+      for (let s = 0; s < segCount; s++) {
+        const len = 8 + Math.random() * 20;
+        bx += Math.cos(angle + (Math.random() - 0.5) * 1.5) * len;
+        by += Math.sin(angle + (Math.random() - 0.5) * 1.5) * len;
+        segments.push({ x: bx, y: by });
+      }
+      lightningBolts.push({ segments, alpha: 1, hue: centerHue + Math.random() * 40 });
+    }
+  }
+
+  const portalR = smoothRadius * 0.9;
+
+  // === DEEP PORTAL GLOW (abyss) ===
+  const abyssR = portalR + portalPulse * 25;
+  const abyssGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, abyssR + 30);
+  abyssGrad.addColorStop(0, hslString(centerHue, 0.9, 0.08, 0.95));
+  abyssGrad.addColorStop(0.3, hslString(centerHue, 0.7, 0.04, 0.8));
+  abyssGrad.addColorStop(0.6, hslString((centerHue + 180) % 360, 0.8, 0.15, 0.3 + portalPulse * 0.3));
+  abyssGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = abyssGrad;
   ctx.beginPath();
-  ctx.arc(cx, cy, glowPulse, 0, Math.PI * 2);
+  ctx.arc(cx, cy, abyssR + 30, 0, Math.PI * 2);
   ctx.fill();
 
-  if (imgLoaded && centerImg) {
-    // Scale pulses with bass (snappy)
-    const targetScale = 1 + map(rawBass, 0, 255, 0, 0.25) + beatPower * 0.15;
-    imgScale = lerp(imgScale, targetScale, 0.3);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
 
-    // Rotation: slight tilt on beats, bounces back
-    if (isHardBeat) imgRotation += (Math.random() - 0.5) * 0.15;
-    imgRotation *= 0.9; // spring back
+  // === ROTATING GEOMETRIC RINGS ===
+  for (let ri = 0; ri < portalRings.length; ri++) {
+    const ring = portalRings[ri];
+    ring.angle += ring.speed * dt * (1 + portalPulse * 2);
+    ring.alpha = lerp(ring.alpha, 0.15 + portalPulse * 0.4 + (ri === 0 ? beatPower * 0.3 : 0), 0.1);
 
-    // Vertical bounce on beats
-    if (isBeat) imgBounceY = -8 - beatPower * 12;
-    imgBounceY *= 0.85;
+    const rr = portalR * ring.radius * (1 + portalPulse * 0.15);
+    const sides = ring.sides;
+    const glitchOff = portalGlitch > 0.1 ? (Math.random() - 0.5) * portalGlitch * 8 : 0;
 
-    // Glitch: on hard beats, slice the image
-    if (isHardBeat) {
-      imgGlitchTimer = 0.1 + Math.random() * 0.12;
-      imgGlitchSlices = [];
-      const numSlices = 3 + Math.floor(Math.random() * 5);
-      for (let i = 0; i < numSlices; i++) {
-        imgGlitchSlices.push({
-          y: Math.random(),       // relative position in image (0-1)
-          h: 0.03 + Math.random() * 0.1, // slice height relative
-          offX: (Math.random() - 0.5) * 30, // horizontal offset
-          chromatic: (Math.random() - 0.5) * 8,
-        });
-      }
-    }
-    if (imgGlitchTimer > 0) imgGlitchTimer -= dt;
+    const ringHue = (centerHue + ri * 35) % 360;
 
-    const imgSize = smoothRadius * 2 * imgScale;
-    const halfSize = imgSize / 2;
-    const drawX = cx - halfSize;
-    const drawY = cy - halfSize + imgBounceY;
-
-    ctx.save();
-    ctx.translate(cx, cy + imgBounceY);
-    ctx.rotate(imgRotation);
-
-    if (imgGlitchTimer > 0 && imgGlitchSlices.length > 0) {
-      // ===== GLITCH RENDER: draw image in slices with offsets =====
-      const sliceData = imgGlitchSlices;
-
-      // First draw the full image as base
-      ctx.globalAlpha = 0.6;
-      ctx.drawImage(centerImg, -halfSize, -halfSize, imgSize, imgSize);
-      ctx.globalAlpha = 1;
-
-      // Then draw glitched slices on top
-      for (const s of sliceData) {
-        const srcY = s.y * centerImg.naturalHeight;
-        const srcH = s.h * centerImg.naturalHeight;
-        const destY = -halfSize + s.y * imgSize;
-        const destH = s.h * imgSize;
-
-        // Main slice (offset)
-        ctx.drawImage(
-          centerImg,
-          0, srcY, centerImg.naturalWidth, srcH,
-          -halfSize + s.offX, destY, imgSize, destH
-        );
-
-        // Chromatic aberration
-        if (Math.abs(s.chromatic) > 1) {
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = 0.15;
-          // Red channel
-          ctx.drawImage(
-            centerImg,
-            0, srcY, centerImg.naturalWidth, srcH,
-            -halfSize + s.offX + s.chromatic, destY, imgSize, destH
-          );
-          // Cyan channel
-          ctx.drawImage(
-            centerImg,
-            0, srcY, centerImg.naturalWidth, srcH,
-            -halfSize + s.offX - s.chromatic, destY, imgSize, destH
-          );
-          ctx.globalAlpha = 1;
-          ctx.globalCompositeOperation = 'source-over';
-        }
-      }
-
-      // Horizontal glitch lines
-      const numLines = 2 + Math.floor(Math.random() * 4);
-      for (let i = 0; i < numLines; i++) {
-        const ly = -halfSize + Math.random() * imgSize;
-        const lw = imgSize * (0.3 + Math.random() * 0.7);
-        const lx = -lw / 2 + (Math.random() - 0.5) * 20;
-        ctx.fillStyle = hslString((centerHue + Math.random() * 60) % 360, 0.8, 0.7, 0.12);
-        ctx.fillRect(lx, ly, lw, 1 + Math.random() * 3);
-      }
-    } else {
-      // ===== NORMAL RENDER =====
-      ctx.drawImage(centerImg, -halfSize, -halfSize, imgSize, imgSize);
-    }
-
-    ctx.restore();
-
-    // Neon ring around image
-    const ringAlpha = map(rawBass, 0, 255, 0.15, 0.6) + beatPower * 0.3;
-    ctx.strokeStyle = hslString(centerHue, 0.9, 0.6, ringAlpha);
-    ctx.lineWidth = 1.5 + beatPower * 3;
+    // Draw polygon
+    ctx.strokeStyle = hslString(ringHue, 0.8, 0.6, ring.alpha);
+    ctx.lineWidth = 1 + portalPulse * 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy + imgBounceY, halfSize + 5, 0, Math.PI * 2);
+    for (let s = 0; s <= sides; s++) {
+      const a = ring.angle + (Math.PI * 2 * s) / sides;
+      const px = cx + Math.cos(a) * rr + glitchOff;
+      const py = cy + Math.sin(a) * rr;
+      if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
     ctx.stroke();
 
-    // Second ring (wider, dimmer)
-    ctx.strokeStyle = hslString((centerHue + 40) % 360, 0.6, 0.5, ringAlpha * 0.3);
-    ctx.lineWidth = 1;
+    // Inner connecting lines (sacred geometry feel)
+    if (sides >= 5 && ring.alpha > 0.08) {
+      ctx.strokeStyle = hslString(ringHue, 0.6, 0.5, ring.alpha * 0.3);
+      ctx.lineWidth = 0.5;
+      for (let s = 0; s < sides; s++) {
+        const a1 = ring.angle + (Math.PI * 2 * s) / sides;
+        const skip = Math.floor(sides / 2);
+        const a2 = ring.angle + (Math.PI * 2 * ((s + skip) % sides)) / sides;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a1) * rr, cy + Math.sin(a1) * rr);
+        ctx.lineTo(cx + Math.cos(a2) * rr, cy + Math.sin(a2) * rr);
+        ctx.stroke();
+      }
+    }
+
+    // Vertex dots
+    for (let s = 0; s < sides; s++) {
+      const a = ring.angle + (Math.PI * 2 * s) / sides;
+      const vx = cx + Math.cos(a) * rr + glitchOff;
+      const vy = cy + Math.sin(a) * rr;
+      ctx.fillStyle = hslString(ringHue, 0.7, 0.8, ring.alpha * 1.5);
+      ctx.beginPath();
+      ctx.arc(vx, vy, 1.5 + portalPulse * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // === INNER EYE — ellipse that opens/closes with bass ===
+  const eyeW = portalR * 0.5 * innerEyeOpen;
+  const eyeH = portalR * 0.2 * innerEyeOpen;
+  if (eyeW > 2) {
+    // Outer eye glow
+    const eyeGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, eyeW);
+    eyeGrad.addColorStop(0, hslString((centerHue + 180) % 360, 0.9, 0.8, 0.5 * innerEyeOpen));
+    eyeGrad.addColorStop(0.5, hslString(centerHue, 0.8, 0.5, 0.2 * innerEyeOpen));
+    eyeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = eyeGrad;
     ctx.beginPath();
-    ctx.arc(cx, cy + imgBounceY, halfSize + 12 + beatPower * 8, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy, eyeW * 1.3, eyeH * 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye shape (almond)
+    ctx.strokeStyle = hslString((centerHue + 180) % 360, 0.9, 0.7, 0.4 + portalPulse * 0.4);
+    ctx.lineWidth = 1.5 + beatPower * 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, eyeW, eyeH, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Iris
+    const irisR = Math.min(eyeW, eyeH) * 0.6;
+    if (irisR > 1) {
+      const irisGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, irisR);
+      irisGrad.addColorStop(0, hslString((centerHue + 180) % 360, 0.9, 0.9, 0.9));
+      irisGrad.addColorStop(0.3, hslString((centerHue + 180) % 360, 0.8, 0.5, 0.6));
+      irisGrad.addColorStop(0.7, hslString(centerHue, 0.7, 0.3, 0.3));
+      irisGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = irisGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, irisR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Pupil
+      ctx.fillStyle = `rgba(0,0,0,${0.8 * innerEyeOpen})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, irisR * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // === FLOWER OF LIFE pattern (subtle, rotating) ===
+  const flowerR = portalR * 0.35;
+  const flowerAlpha = 0.04 + portalPulse * 0.08;
+  ctx.strokeStyle = hslString(centerHue, 0.5, 0.6, flowerAlpha);
+  ctx.lineWidth = 0.5;
+  const flowerAngle = hueOffset * 0.003;
+  for (let i = 0; i < 6; i++) {
+    const a = flowerAngle + (Math.PI * 2 * i) / 6;
+    const fx = cx + Math.cos(a) * flowerR;
+    const fy = cy + Math.sin(a) * flowerR;
+    ctx.beginPath();
+    ctx.arc(fx, fy, flowerR, 0, Math.PI * 2);
     ctx.stroke();
   }
+  // Center circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, flowerR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // === LIGHTNING BOLTS ===
+  for (let li = lightningBolts.length - 1; li >= 0; li--) {
+    const bolt = lightningBolts[li];
+    bolt.alpha *= 0.85;
+    if (bolt.alpha < 0.02) { lightningBolts.splice(li, 1); continue; }
+
+    ctx.strokeStyle = hslString(bolt.hue, 0.8, 0.8, bolt.alpha);
+    ctx.lineWidth = 1 + bolt.alpha * 3;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    for (const seg of bolt.segments) {
+      ctx.lineTo(cx + seg.x, cy + seg.y);
+    }
+    ctx.stroke();
+
+    // Glow pass
+    ctx.strokeStyle = hslString(bolt.hue, 0.6, 0.6, bolt.alpha * 0.3);
+    ctx.lineWidth = 4 + bolt.alpha * 6;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    for (const seg of bolt.segments) {
+      ctx.lineTo(cx + seg.x, cy + seg.y);
+    }
+    ctx.stroke();
+  }
+
+  // === GLITCH DISTORTION BARS ===
+  if (portalGlitch > 0.1) {
+    const numBars = Math.floor(portalGlitch * 8);
+    for (let i = 0; i < numBars; i++) {
+      const barY = cy - portalR + Math.random() * portalR * 2;
+      const barW = portalR * (0.5 + Math.random());
+      const barH = 1 + Math.random() * 3;
+      ctx.fillStyle = hslString((centerHue + Math.random() * 90) % 360, 0.9, 0.7, portalGlitch * 0.2);
+      ctx.fillRect(cx - barW / 2 + (Math.random() - 0.5) * 15, barY, barW, barH);
+    }
+  }
+
+  ctx.restore();
+
+  // === OUTER PORTAL RING ===
+  const outerAlpha = 0.12 + portalPulse * 0.3 + beatPower * 0.3;
+  ctx.strokeStyle = hslString(centerHue, 0.9, 0.6, outerAlpha);
+  ctx.lineWidth = 1.5 + beatPower * 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, portalR + 5, 0, Math.PI * 2);
+  ctx.stroke();
 
   // ===== ORBIT PARTICLES — with trails =====
   ctx.save();
